@@ -3,11 +3,31 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.agents.planner import create_plan
+from app.agents.planner import (
+    create_plan,
+    plan_for_destination,
+    plan_for_fly_destination,
+)
 from app.agents.refiner import refine
 from app.config import settings
-from app.models.schemas import ChatRequest, ChatResponse, PlanRequest, PlanResponse
+from app.models.schemas import (
+    ChatRequest,
+    ChatResponse,
+    FlightsRequest,
+    FlightsResponse,
+    FlyDestinationItem,
+    FlyDestinationsRequest,
+    FlyDestinationsResponse,
+    FlyPlanRequest,
+    PlanRequest,
+    PlanResponse,
+    SelectRequest,
+    SelectResponse,
+)
+from app.services.airports import airport_by_iata, nearest_airport
 from app.services.destinations import DESTINATIONS
+from app.services.flights import estimate_flight, fly_candidates, search_offers
+from app.services.fly_destinations import FLY_DESTINATIONS
 from app.services.geocode import geocode
 
 app = FastAPI(title="Spontaneous Travel Agent", version="0.1.0")
@@ -38,6 +58,54 @@ async def plan_trip(request: PlanRequest):
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return PlanResponse(itinerary=itinerary, candidates=candidates)
+
+
+@app.post("/api/select", response_model=SelectResponse)
+async def select_destination(request: SelectRequest):
+    try:
+        itinerary = await plan_for_destination(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return SelectResponse(itinerary=itinerary)
+
+
+@app.post("/api/fly-destinations", response_model=FlyDestinationsResponse)
+async def list_fly_destinations(request: FlyDestinationsRequest):
+    origin_ap, items = fly_candidates(
+        request.origin.lat, request.origin.lng, request.max_flight_hours, request.preferences
+    )
+    return FlyDestinationsResponse(
+        origin_airport=origin_ap.iata,
+        destinations=[FlyDestinationItem(**item) for item in items],
+    )
+
+
+@app.post("/api/fly-plan", response_model=SelectResponse)
+async def fly_plan(request: FlyPlanRequest):
+    try:
+        itinerary = await plan_for_fly_destination(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return SelectResponse(itinerary=itinerary)
+
+
+@app.post("/api/flights", response_model=FlightsResponse)
+async def flights(request: FlightsRequest):
+    dest = next((d for d in FLY_DESTINATIONS if d.name == request.destination_name), None)
+    if dest is None:
+        raise HTTPException(status_code=422, detail=f"Unknown fly destination: {request.destination_name}")
+
+    origin_ap = nearest_airport(request.origin.lat, request.origin.lng)
+    dest_ap = airport_by_iata(dest.airport)
+    estimate = estimate_flight(origin_ap, dest_ap) if dest_ap else {}
+    offers = await search_offers(origin_ap.iata, dest.airport, request.departure_date, request.adults)
+    return FlightsResponse(
+        origin_airport=origin_ap.iata,
+        arrival_airport=dest.airport,
+        estimate=estimate,
+        offers=offers,
+        has_live_data=len(offers) > 0,
+    )
 
 
 @app.post("/api/chat", response_model=ChatResponse)

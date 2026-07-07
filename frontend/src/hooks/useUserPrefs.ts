@@ -7,7 +7,7 @@ const DEFAULT_PREFS: UserPrefs = {
   homeLocation: { lat: 37.7749, lng: -122.4194, label: 'San Francisco, CA' },
   preferences: ['national-park', 'hiking'],
   defaultMaxDriveHours: 3,
-  defaultMaxFlightHours: 2,
+  defaultMaxFlightHours: 4,
 }
 
 export function useUserPrefs() {

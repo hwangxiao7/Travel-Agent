@@ -55,11 +55,88 @@ class Itinerary(BaseModel):
     packing_tips: list[str] = Field(default_factory=list)
     weather_note: str = ""
     summary: str = ""
+    travel_mode: Literal["drive", "fly"] = "drive"
+    origin_airport: str = ""
+    destination_airport: str = ""
 
 
 class PlanResponse(BaseModel):
     itinerary: Itinerary
     candidates: list[dict]
+
+
+class SelectRequest(BaseModel):
+    origin: Location
+    destination_name: str
+    trip_type: Literal["day-trip", "weekend"] = "day-trip"
+    start_date: str
+    end_date: str | None = None
+    preferences: list[Preference] = Field(default_factory=list)
+    language: str = "en"
+
+
+class SelectResponse(BaseModel):
+    itinerary: Itinerary
+
+
+class FlyDestinationsRequest(BaseModel):
+    origin: Location
+    max_flight_hours: float = Field(default=4.0, ge=0.5, le=12.0)
+    preferences: list[Preference] = Field(default_factory=list)
+
+
+class FlyDestinationItem(BaseModel):
+    name: str
+    lat: float
+    lng: float
+    region: str
+    airport: str
+    highlight: str
+    flight_time: str
+    flight_hours: float
+    distance_miles: int
+
+
+class FlyDestinationsResponse(BaseModel):
+    origin_airport: str
+    destinations: list[FlyDestinationItem]
+
+
+class FlyPlanRequest(BaseModel):
+    origin: Location
+    destination_name: str
+    trip_type: Literal["day-trip", "weekend"] = "weekend"
+    start_date: str
+    end_date: str | None = None
+    preferences: list[Preference] = Field(default_factory=list)
+    language: str = "en"
+
+
+class FlightsRequest(BaseModel):
+    origin: Location
+    destination_name: str
+    departure_date: str
+    adults: int = Field(default=1, ge=1, le=9)
+
+
+class FlightOffer(BaseModel):
+    price: str
+    currency: str
+    duration: str
+    stops: int
+    carrier: str
+    depart_airport: str
+    depart_at: str
+    arrive_airport: str
+    arrive_at: str
+
+
+class FlightsResponse(BaseModel):
+    origin_airport: str
+    arrival_airport: str
+    estimate: dict
+    offers: list[FlightOffer]
+    has_live_data: bool
 
 
 class ChatMessage(BaseModel):

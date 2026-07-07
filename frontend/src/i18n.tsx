@@ -38,7 +38,7 @@ const TRANSLATIONS: Record<Lang, Dict> = {
     'pref.beach': 'Beach',
 
     'chat.title': 'Refine with AI',
-    'chat.hint': 'Try: “Make it more relaxed” or “Suggest something closer”',
+    'chat.hint': 'Try: “Plan a trip to Yosemite”, “Make it more relaxed”, or “Something closer”',
     'chat.thinking': 'Thinking…',
     'chat.disabled': 'Generate a plan first',
     'chat.placeholder': 'Ask to adjust the trip…',
@@ -53,6 +53,22 @@ const TRANSLATIONS: Record<Lang, Dict> = {
 
     'map.start': 'Start',
     'map.recommended': 'Recommended',
+
+    'cand.title': 'Options within range',
+    'cand.selected': 'Selected',
+
+    'fly.title': 'Fly-to destinations',
+    'fly.loading': 'Finding flights…',
+    'fly.flight': 'flight',
+    'fly.from': 'from',
+    'fly.searchFlights': 'Search real flights',
+    'fly.searching': 'Searching flights…',
+    'fly.offers': 'Flight offers',
+    'fly.nonstop': 'nonstop',
+    'fly.stops': 'stops',
+    'fly.noLive': 'Estimated flight time shown. Add an Amadeus API key for live fares.',
+    'fly.none': 'No fly-to destinations within your flight-time limit.',
+    'itin.flight': 'flight',
   },
   zh: {
     'app.title': '说走就走旅行助手',
@@ -85,7 +101,7 @@ const TRANSLATIONS: Record<Lang, Dict> = {
     'pref.beach': '海滩',
 
     'chat.title': 'AI 微调',
-    'chat.hint': '试试：「轻松一点」或「换个近一点的」',
+    'chat.hint': '试试：「我要 Yosemite 的计划」「轻松一点」或「换个近一点的」',
     'chat.thinking': '思考中…',
     'chat.disabled': '请先生成计划',
     'chat.placeholder': '让我帮你调整行程…',
@@ -100,6 +116,22 @@ const TRANSLATIONS: Record<Lang, Dict> = {
 
     'map.start': '出发点',
     'map.recommended': '推荐',
+
+    'cand.title': '范围内的可选地点',
+    'cand.selected': '已选',
+
+    'fly.title': '可飞往的目的地',
+    'fly.loading': '正在查找航班…',
+    'fly.flight': '飞行',
+    'fly.from': '出发机场',
+    'fly.searchFlights': '搜索真实航班',
+    'fly.searching': '正在搜索航班…',
+    'fly.offers': '航班选项',
+    'fly.nonstop': '直飞',
+    'fly.stops': '中转',
+    'fly.noLive': '当前为飞行时间估算。配置 Amadeus API key 后可显示真实票价。',
+    'fly.none': '在你的飞行时间上限内没有可飞目的地。',
+    'itin.flight': '飞行',
   },
 }
 

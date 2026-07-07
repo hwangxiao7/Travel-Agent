@@ -21,7 +21,10 @@ export function ItineraryCard({ itinerary }: Props) {
       <header>
         <h2>{itinerary.destination}</h2>
         <p className="meta">
-          {itinerary.drive_time} {t('itin.drive')} · {itinerary.weather_note}
+          {itinerary.travel_mode === 'fly'
+            ? `✈ ${itinerary.origin_airport} → ${itinerary.destination_airport} · ${itinerary.drive_time} ${t('itin.flight')}`
+            : `${itinerary.drive_time} ${t('itin.drive')}`}{' '}
+          · {itinerary.weather_note}
         </p>
         <p className="summary">{itinerary.summary}</p>
       </header>

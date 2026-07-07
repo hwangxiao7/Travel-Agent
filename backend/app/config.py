@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-3-5-haiku-20241022"
     mapbox_token: str = ""
     openweather_api_key: str = ""
+    amadeus_api_key: str = ""
+    amadeus_api_secret: str = ""
+    amadeus_base_url: str = "https://test.api.amadeus.com"
     cors_origins: str = "http://localhost:5173"
 
 

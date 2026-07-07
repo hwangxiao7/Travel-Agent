@@ -8,6 +8,7 @@ interface Props {
   origin: Location
   candidates: Candidate[]
   selected?: { lat: number; lng: number; name: string } | null
+  onSelect?: (name: string) => void
 }
 
 function pin(color: string, label: string): L.DivIcon {
@@ -20,11 +21,13 @@ function pin(color: string, label: string): L.DivIcon {
   })
 }
 
-export function MapView({ origin, candidates, selected }: Props) {
+export function MapView({ origin, candidates, selected, onSelect }: Props) {
   const { t } = useI18n()
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const layerRef = useRef<L.LayerGroup | null>(null)
+  const onSelectRef = useRef(onSelect)
+  onSelectRef.current = onSelect
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
@@ -63,11 +66,12 @@ export function MapView({ origin, candidates, selected }: Props) {
       const isSelected = selected?.name === c.name
       const color = isSelected ? '#16a34a' : i === 0 ? '#ea580c' : '#64748b'
       const badge = i === 0 ? '✓' : String(i + 1)
-      L.marker([c.lat, c.lng], { icon: pin(color, badge) })
+      const marker = L.marker([c.lat, c.lng], { icon: pin(color, badge) })
         .bindPopup(
           `<strong>${c.name}</strong><br/>${c.drive_time} ${t('itin.drive')}<br/><em>${c.highlight}</em>`,
         )
         .addTo(layer)
+      marker.on('click', () => onSelectRef.current?.(c.name))
     })
 
     const points: L.LatLngExpression[] = [

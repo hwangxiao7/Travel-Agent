@@ -33,6 +33,10 @@ MSG: dict[str, dict[str, str]] = {
         "en": "Head to {name} — {highlight} About {time} drive from your starting point.",
         "zh": "出发去 {name} —— {highlight} 距出发点约 {time} 车程。",
     },
+    "fly_summary_fallback": {
+        "en": "Fly to {name} — {highlight} About {time} in the air from {airport}.",
+        "zh": "飞往 {name} —— {highlight} 从 {airport} 起飞约 {time}。",
+    },
     "switch_summary": {
         "en": "Switched to {name} — {highlight} About {time} drive from {origin}.",
         "zh": "已切换到 {name} —— {highlight} 距 {origin} 约 {time} 车程。",
@@ -48,6 +52,14 @@ MSG: dict[str, dict[str, str]] = {
     "family_summary": {
         "en": "Family-friendly pick: {name} — {highlight}",
         "zh": "适合家庭的选择：{name} —— {highlight}",
+    },
+    "set_destination_reply": {
+        "en": "Done — planned your trip to {name} ({time} drive). {highlight}",
+        "zh": "已为你规划前往 {name} 的行程（车程 {time}）。{highlight}",
+    },
+    "replan_reply": {
+        "en": "Re-planned around your preferences: {name} ({time} drive).",
+        "zh": "已按你的偏好重新规划：{name}（车程 {time}）。",
     },
     "closer_reply": {
         "en": "Here's a closer option: {name} ({time} drive). {highlight}",

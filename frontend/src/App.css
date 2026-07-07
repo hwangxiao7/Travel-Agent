@@ -278,6 +278,200 @@
   box-shadow: 0 1px 4px rgb(15 23 42 / 35%);
 }
 
+.candidate-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.6rem;
+}
+
+.candidate-card {
+  text-align: left;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  padding: 0.6rem 0.7rem;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.candidate-card:hover:not(:disabled) {
+  border-color: #0f766e;
+  box-shadow: 0 2px 8px rgb(15 23 42 / 8%);
+}
+
+.candidate-card:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.candidate-card.active {
+  border-color: #16a34a;
+  background: #f0fdf4;
+}
+
+.candidate-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.candidate-head strong {
+  font-size: 0.9rem;
+}
+
+.candidate-time {
+  color: #0369a1;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.candidate-highlight {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.candidate-badge {
+  display: inline-block;
+  margin-top: 0.45rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #16a34a;
+}
+
+.fly-grid {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.fly-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  overflow: hidden;
+}
+
+.fly-card.active {
+  border-color: #16a34a;
+  background: #f0fdf4;
+}
+
+.fly-main {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 0.65rem 0.75rem;
+  cursor: pointer;
+}
+
+.fly-main:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.fly-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.fly-head strong {
+  font-size: 0.92rem;
+}
+
+.fly-time {
+  color: #7c3aed;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.fly-region {
+  margin: 0.3rem 0 0;
+  font-size: 0.78rem;
+  color: #475569;
+}
+
+.fly-airport {
+  font-weight: 600;
+  color: #0369a1;
+}
+
+.fly-highlight {
+  margin: 0.3rem 0 0;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.fly-search-btn {
+  width: 100%;
+  border: none;
+  border-top: 1px solid #e2e8f0;
+  background: #eef2ff;
+  color: #4338ca;
+  padding: 0.5rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.fly-search-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.fly-offers {
+  padding: 0.5rem 0.75rem 0.7rem;
+  background: #fff;
+}
+
+.fly-note {
+  margin: 0 0 0.5rem;
+  font-size: 0.78rem;
+  color: #b45309;
+  background: #fffbeb;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+}
+
+.offer-row {
+  padding: 0.45rem 0;
+  border-top: 1px solid #f1f5f9;
+}
+
+.offer-row:first-child {
+  border-top: none;
+}
+
+.offer-main {
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+}
+
+.offer-price {
+  font-weight: 700;
+  color: #16a34a;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.offer-route {
+  font-size: 0.8rem;
+  color: #334155;
+}
+
+.offer-times {
+  margin-top: 0.2rem;
+  font-size: 0.76rem;
+  color: #64748b;
+}
+
 .itinerary-card header h2 {
   margin: 0;
 }

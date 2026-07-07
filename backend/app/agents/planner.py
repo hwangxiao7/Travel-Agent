@@ -2,8 +2,21 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from app.models.schemas import Activity, DayPlan, Itinerary, PlanRequest, Preference
+from app.models.schemas import (
+    Activity,
+    DayPlan,
+    FlyPlanRequest,
+    Itinerary,
+    PlanRequest,
+    Preference,
+    SelectRequest,
+)
+from app.services.airports import airport_by_iata, nearest_airport
 from app.services.constraint_engine import ScoredDestination, find_candidates
+from app.services.destinations import DESTINATIONS
+from app.services.fly_destinations import FLY_DESTINATIONS
+from app.services.flights import estimate_flight
+from app.services.geo import estimate_drive_hours, format_duration, haversine_miles
 from app.services.i18n import lang_name, pack, tr
 from app.services.llm import fetch_weather_note, generate_summary
 
@@ -108,3 +121,115 @@ async def create_plan(request: PlanRequest) -> tuple[Itinerary, list[dict]]:
         for c in candidates
     ]
     return itinerary, candidate_payload
+
+
+async def plan_for_destination(req: SelectRequest) -> Itinerary:
+    dest = next((d for d in DESTINATIONS if d.name == req.destination_name), None)
+    if dest is None:
+        raise ValueError(f"Unknown destination: {req.destination_name}")
+
+    miles = haversine_miles(req.origin.lat, req.origin.lng, dest.lat, dest.lng)
+    hours = estimate_drive_hours(miles)
+    scored = ScoredDestination(
+        destination=dest,
+        distance_miles=round(miles, 1),
+        drive_hours=round(hours, 2),
+        drive_time=format_duration(hours),
+        score=0.0,
+    )
+
+    plan_req = PlanRequest(
+        origin=req.origin,
+        trip_type=req.trip_type,
+        start_date=req.start_date,
+        end_date=req.end_date,
+        max_drive_hours=8.0,
+        max_flight_hours=3.0,
+        preferences=req.preferences,
+        allow_flight=req.trip_type == "weekend",
+        language=req.language,
+    )
+    alts = [c.destination.name for c in find_candidates(plan_req, limit=4) if c.destination.name != dest.name][:2]
+    weather = await fetch_weather_note(dest.lat, dest.lng, req.language)
+
+    summary_prompt = (
+        f"Write 2-3 sentences for a spontaneous trip plan.\n"
+        f"Origin: {req.origin.label or 'user location'}\n"
+        f"Destination: {dest.name} ({dest.highlight})\n"
+        f"Drive: {scored.drive_time}\n"
+        f"Trip type: {req.trip_type}\n"
+        f"Weather: {weather}\n"
+        f"Tone: enthusiastic but practical.\n"
+        f"Respond in {lang_name(req.language)}. Keep place names in English."
+    )
+    summary = await generate_summary(summary_prompt)
+    if not summary:
+        summary = tr(
+            "summary_fallback",
+            req.language,
+            name=dest.name,
+            highlight=dest.highlight,
+            time=scored.drive_time,
+        )
+
+    return _build_itinerary(plan_req, scored, alts, weather, summary)
+
+
+async def plan_for_fly_destination(req: FlyPlanRequest) -> Itinerary:
+    dest = next((d for d in FLY_DESTINATIONS if d.name == req.destination_name), None)
+    if dest is None:
+        raise ValueError(f"Unknown fly destination: {req.destination_name}")
+
+    origin_ap = nearest_airport(req.origin.lat, req.origin.lng)
+    dest_ap = airport_by_iata(dest.airport)
+    est = estimate_flight(origin_ap, dest_ap) if dest_ap else {"flight_hours": 0.0, "flight_time": ""}
+
+    scored = ScoredDestination(
+        destination=dest,  # type: ignore[arg-type]  # duck-typed: same shape as Destination
+        distance_miles=est.get("distance_miles", 0),
+        drive_hours=est["flight_hours"],
+        drive_time=est["flight_time"],
+        score=0.0,
+    )
+
+    plan_req = PlanRequest(
+        origin=req.origin,
+        trip_type=req.trip_type,
+        start_date=req.start_date,
+        end_date=req.end_date,
+        max_drive_hours=8.0,
+        max_flight_hours=8.0,
+        preferences=req.preferences,
+        allow_flight=True,
+        language=req.language,
+    )
+    weather = await fetch_weather_note(dest.lat, dest.lng, req.language)
+
+    summary_prompt = (
+        f"Write 2-3 sentences for a spontaneous fly-away trip plan.\n"
+        f"Fly from {origin_ap.iata} to {dest.name} ({dest.highlight})\n"
+        f"Flight: about {est['flight_time']}\n"
+        f"Trip type: {req.trip_type}\n"
+        f"Weather: {weather}\n"
+        f"Tone: enthusiastic but practical.\n"
+        f"Respond in {lang_name(req.language)}. Keep place names in English."
+    )
+    summary = await generate_summary(summary_prompt)
+    if not summary:
+        summary = tr(
+            "fly_summary_fallback",
+            req.language,
+            name=dest.name,
+            highlight=dest.highlight,
+            time=est["flight_time"],
+            airport=origin_ap.iata,
+        )
+
+    itinerary = _build_itinerary(plan_req, scored, [], weather, summary)
+    return itinerary.model_copy(
+        update={
+            "travel_mode": "fly",
+            "origin_airport": origin_ap.iata,
+            "destination_airport": dest.airport,
+        }
+    )

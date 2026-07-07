@@ -53,6 +53,41 @@ export interface Itinerary {
   packing_tips: string[]
   weather_note: string
   summary: string
+  travel_mode: 'drive' | 'fly'
+  origin_airport: string
+  destination_airport: string
+}
+
+export interface FlyDestination {
+  name: string
+  lat: number
+  lng: number
+  region: string
+  airport: string
+  highlight: string
+  flight_time: string
+  flight_hours: number
+  distance_miles: number
+}
+
+export interface FlightOffer {
+  price: string
+  currency: string
+  duration: string
+  stops: number
+  carrier: string
+  depart_airport: string
+  depart_at: string
+  arrive_airport: string
+  arrive_at: string
+}
+
+export interface FlightsResult {
+  origin_airport: string
+  arrival_airport: string
+  estimate: { flight_time?: string; distance_miles?: number }
+  offers: FlightOffer[]
+  has_live_data: boolean
 }
 
 export interface Candidate {

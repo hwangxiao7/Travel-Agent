@@ -1,12 +1,27 @@
 import { useMemo, useState } from 'react'
-import { createPlan, sendChat } from './api/client'
+import {
+  createPlan,
+  fetchFlyDestinations,
+  planFlyDestination,
+  searchFlights,
+  selectDestination,
+  sendChat,
+} from './api/client'
+import { CandidateList } from './components/CandidateList'
 import { ChatPanel } from './components/ChatPanel'
 import { ConstraintPanel } from './components/ConstraintPanel'
+import { FlyDestinations } from './components/FlyDestinations'
 import { ItineraryCard } from './components/ItineraryCard'
 import { MapView } from './components/MapView'
 import { useUserPrefs } from './hooks/useUserPrefs'
 import { useI18n } from './i18n'
-import type { Candidate, ChatMessage, Itinerary } from './types'
+import type {
+  Candidate,
+  ChatMessage,
+  FlightsResult,
+  FlyDestination,
+  Itinerary,
+} from './types'
 import './App.css'
 
 function todayISO() {
@@ -33,6 +48,10 @@ export default function App() {
   const [itinerary, setItinerary] = useState<Itinerary | null>(null)
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [flyDestinations, setFlyDestinations] = useState<FlyDestination[]>([])
+  const [flightsFor, setFlightsFor] = useState<string | null>(null)
+  const [flights, setFlights] = useState<FlightsResult | null>(null)
+  const [flightsLoading, setFlightsLoading] = useState(false)
 
   const selected = useMemo(
     () =>
@@ -59,12 +78,87 @@ export default function App() {
       })
       setItinerary(res.itinerary)
       setCandidates(res.candidates)
+      setFlightsFor(null)
+      setFlights(null)
       setMessages([
         {
           role: 'assistant',
           content: res.itinerary.summary,
         },
       ])
+
+      if (tripType === 'weekend' && allowFlight) {
+        try {
+          const fd = await fetchFlyDestinations(
+            prefs.homeLocation,
+            prefs.defaultMaxFlightHours,
+            prefs.preferences,
+          )
+          setFlyDestinations(fd.destinations)
+        } catch {
+          setFlyDestinations([])
+        }
+      } else {
+        setFlyDestinations([])
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('app.error'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSelectFly = async (name: string) => {
+    if (loading) return
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await planFlyDestination({
+        origin: prefs.homeLocation,
+        destination_name: name,
+        trip_type: 'weekend',
+        start_date: startDate,
+        end_date: endDate,
+        preferences: prefs.preferences,
+        language: lang,
+      })
+      setItinerary(res.itinerary)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('app.error'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSearchFlights = async (name: string) => {
+    setFlightsFor(name)
+    setFlights(null)
+    setFlightsLoading(true)
+    try {
+      const res = await searchFlights(prefs.homeLocation, name, startDate)
+      setFlights(res)
+    } catch {
+      setFlights(null)
+    } finally {
+      setFlightsLoading(false)
+    }
+  }
+
+  const handleSelectCandidate = async (name: string) => {
+    if (loading) return
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await selectDestination({
+        origin: prefs.homeLocation,
+        destination_name: name,
+        trip_type: tripType,
+        start_date: startDate,
+        end_date: tripType === 'weekend' ? endDate : null,
+        preferences: prefs.preferences,
+        language: lang,
+      })
+      setItinerary(res.itinerary)
     } catch (e) {
       setError(e instanceof Error ? e.message : t('app.error'))
     } finally {
@@ -141,7 +235,28 @@ export default function App() {
         </aside>
 
         <section className="main-pane">
-          <MapView origin={prefs.homeLocation} candidates={candidates} selected={selected} />
+          <MapView
+            origin={prefs.homeLocation}
+            candidates={candidates}
+            selected={selected}
+            onSelect={handleSelectCandidate}
+          />
+          <CandidateList
+            candidates={candidates}
+            selectedName={itinerary?.destination ?? null}
+            loading={loading}
+            onSelect={handleSelectCandidate}
+          />
+          <FlyDestinations
+            destinations={flyDestinations}
+            selectedName={itinerary?.destination ?? null}
+            loading={loading}
+            flightsFor={flightsFor}
+            flights={flights}
+            flightsLoading={flightsLoading}
+            onSelect={handleSelectFly}
+            onSearchFlights={handleSearchFlights}
+          />
           <ItineraryCard itinerary={itinerary} />
         </section>
       </main>
