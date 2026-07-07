@@ -1,3 +1,4 @@
+import { useI18n } from '../i18n'
 import type { Itinerary } from '../types'
 
 interface Props {
@@ -5,10 +6,12 @@ interface Props {
 }
 
 export function ItineraryCard({ itinerary }: Props) {
+  const { t } = useI18n()
+
   if (!itinerary) {
     return (
       <div className="panel itinerary-empty">
-        <p>Fill in your constraints and hit <strong>Generate plan</strong> for a spontaneous itinerary.</p>
+        <p>{t('itin.empty')}</p>
       </div>
     )
   }
@@ -17,7 +20,9 @@ export function ItineraryCard({ itinerary }: Props) {
     <div className="panel itinerary-card">
       <header>
         <h2>{itinerary.destination}</h2>
-        <p className="meta">{itinerary.drive_time} drive · {itinerary.weather_note}</p>
+        <p className="meta">
+          {itinerary.drive_time} {t('itin.drive')} · {itinerary.weather_note}
+        </p>
         <p className="summary">{itinerary.summary}</p>
       </header>
 
@@ -41,7 +46,7 @@ export function ItineraryCard({ itinerary }: Props) {
 
       {itinerary.alternatives.length > 0 && (
         <section>
-          <h3>Alternatives</h3>
+          <h3>{t('itin.alternatives')}</h3>
           <ul className="alts">
             {itinerary.alternatives.map((a) => (
               <li key={a}>{a}</li>
@@ -52,7 +57,7 @@ export function ItineraryCard({ itinerary }: Props) {
 
       {itinerary.packing_tips.length > 0 && (
         <section>
-          <h3>Pack</h3>
+          <h3>{t('itin.pack')}</h3>
           <div className="tags readonly">
             {itinerary.packing_tips.map((t) => (
               <span key={t} className="tag active">{t}</span>

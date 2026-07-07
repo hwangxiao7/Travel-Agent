@@ -8,6 +8,34 @@
   background: linear-gradient(135deg, #0f766e, #0369a1);
   color: #fff;
   padding: 1.25rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.lang-switch {
+  display: flex;
+  gap: 0.25rem;
+  background: rgb(255 255 255 / 15%);
+  border-radius: 8px;
+  padding: 0.2rem;
+}
+
+.lang-switch button {
+  border: none;
+  background: transparent;
+  color: #fff;
+  padding: 0.35rem 0.7rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.lang-switch button.active {
+  background: #fff;
+  color: #0f766e;
+  font-weight: 600;
 }
 
 .topbar h1 {
@@ -224,18 +252,30 @@
 }
 
 .map-container {
-  height: 340px;
+  height: 360px;
   border-radius: 12px;
   overflow: hidden;
   border: 1px solid #e2e8f0;
+  z-index: 0;
 }
 
-.map-fallback {
-  background: #fff;
-  border: 1px dashed #94a3b8;
-  border-radius: 12px;
-  padding: 1rem;
-  min-height: 180px;
+.map-pin {
+  background: transparent;
+  border: none;
+}
+
+.pin-dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgb(15 23 42 / 35%);
 }
 
 .itinerary-card header h2 {

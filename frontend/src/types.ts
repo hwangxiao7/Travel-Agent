@@ -27,6 +27,7 @@ export interface PlanRequest {
   max_flight_hours: number
   preferences: Preference[]
   allow_flight: boolean
+  language: string
 }
 
 export interface Activity {

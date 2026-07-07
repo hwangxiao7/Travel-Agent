@@ -5,11 +5,12 @@ import json
 import httpx
 
 from app.config import settings
+from app.services.i18n import tr
 
 
-async def fetch_weather_note(lat: float, lng: float) -> str:
+async def fetch_weather_note(lat: float, lng: float, lang: str = "en") -> str:
     if not settings.openweather_api_key:
-        return "Check local forecast before you go — mountain and coastal weather can shift quickly."
+        return tr("weather_default", lang)
 
     url = "https://api.openweathermap.org/data/2.5/weather"
     params = {"lat": lat, "lon": lng, "appid": settings.openweather_api_key, "units": "imperial"}
@@ -20,9 +21,9 @@ async def fetch_weather_note(lat: float, lng: float) -> str:
             data = resp.json()
         desc = data["weather"][0]["description"]
         temp = data["main"]["temp"]
-        return f"Current conditions: {desc}, ~{temp:.0f}°F."
+        return tr("weather_current", lang, desc=desc, temp=f"{temp:.0f}")
     except Exception:
-        return "Weather lookup unavailable — check forecast before departure."
+        return tr("weather_unavailable", lang)
 
 
 async def generate_summary(prompt: str) -> str:
@@ -58,17 +59,6 @@ async def generate_summary(prompt: str) -> str:
         return resp.choices[0].message.content or ""
 
     return ""
-
-
-async def chat_reply(prompt: str) -> str:
-    text = await generate_summary(prompt)
-    if text:
-        return text
-    return (
-        "I can adjust your trip right now — try: \"make it closer\", \"switch to a "
-        "different destination\", \"more relaxed pace\", \"pack in more stops\", or "
-        "\"make it family-friendly\". (Add your own OpenAI/Anthropic key for open-ended chat.)"
-    )
 
 
 def parse_itinerary_json(raw: str) -> dict | None:

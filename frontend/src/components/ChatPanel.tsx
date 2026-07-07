@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useI18n } from '../i18n'
 import type { ChatMessage } from '../types'
 
 interface Props {
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export function ChatPanel({ messages, loading, onSend, disabled }: Props) {
+  const { t } = useI18n()
   const [input, setInput] = useState('')
 
   const submit = () => {
@@ -20,28 +22,26 @@ export function ChatPanel({ messages, loading, onSend, disabled }: Props) {
 
   return (
     <div className="panel chat-panel">
-      <h2>Refine with AI</h2>
+      <h2>{t('chat.title')}</h2>
       <div className="chat-log">
-        {messages.length === 0 && (
-          <p className="hint">Try: “Make it more relaxed” or “Suggest something closer”</p>
-        )}
+        {messages.length === 0 && <p className="hint">{t('chat.hint')}</p>}
         {messages.map((m, i) => (
           <div key={i} className={`bubble ${m.role}`}>
             {m.content}
           </div>
         ))}
-        {loading && <div className="bubble assistant">Thinking…</div>}
+        {loading && <div className="bubble assistant">{t('chat.thinking')}</div>}
       </div>
       <div className="chat-input-row">
         <input
           value={input}
           disabled={disabled || loading}
-          placeholder={disabled ? 'Generate a plan first' : 'Ask to adjust the trip…'}
+          placeholder={disabled ? t('chat.disabled') : t('chat.placeholder')}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && submit()}
         />
         <button type="button" disabled={disabled || loading || !input.trim()} onClick={submit}>
-          Send
+          {t('chat.send')}
         </button>
       </div>
     </div>

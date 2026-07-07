@@ -28,9 +28,10 @@ Works **without API keys** using a curated destination catalog and template summ
 ```bash
 cd frontend
 npm install
-cp .env.example .env         # optional: VITE_MAPBOX_TOKEN for map
 npm run dev
 ```
+
+The map uses free OpenStreetMap tiles via Leaflet — no token or signup needed.
 
 Open http://localhost:5173
 
@@ -42,7 +43,8 @@ Open http://localhost:5173
 | `OPENAI_API_KEY` | backend `.env` | GPT-4o-mini summaries & chat |
 | `ANTHROPIC_API_KEY` | backend `.env` | Claude Haiku summaries & chat |
 | `OPENWEATHER_API_KEY` | backend `.env` | Live weather note on plan |
-| `VITE_MAPBOX_TOKEN` | frontend `.env` | Interactive map |
+
+The interactive map uses **Leaflet + OpenStreetMap** — free, no token required.
 
 User preferences (home location, tags) persist in **browser localStorage** — no account required.
 
@@ -58,5 +60,6 @@ User preferences (home location, tags) persist in **browser localStorage** — n
 - Drive-time filtering from origin coordinates
 - Preference tags: national park, hiking, city walk, forest, beach
 - Hybrid UI: constraint panel + map + itinerary + chat
+- Multi-language UI + AI responses (English / 中文, toggle in top bar)
 
 Not in v1: user accounts, bookings, multi-day flights, real-time fares.

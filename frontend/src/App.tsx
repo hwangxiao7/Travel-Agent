@@ -5,6 +5,7 @@ import { ConstraintPanel } from './components/ConstraintPanel'
 import { ItineraryCard } from './components/ItineraryCard'
 import { MapView } from './components/MapView'
 import { useUserPrefs } from './hooks/useUserPrefs'
+import { useI18n } from './i18n'
 import type { Candidate, ChatMessage, Itinerary } from './types'
 import './App.css'
 
@@ -19,6 +20,7 @@ function weekendEndISO(start: string) {
 }
 
 export default function App() {
+  const { t, lang, setLang } = useI18n()
   const { prefs, setPrefs } = useUserPrefs()
   const [tripType, setTripType] = useState<'day-trip' | 'weekend'>('day-trip')
   const [startDate, setStartDate] = useState(todayISO)
@@ -53,6 +55,7 @@ export default function App() {
         max_flight_hours: prefs.defaultMaxFlightHours,
         preferences: prefs.preferences,
         allow_flight: allowFlight,
+        language: lang,
       })
       setItinerary(res.itinerary)
       setCandidates(res.candidates)
@@ -63,7 +66,7 @@ export default function App() {
         },
       ])
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong')
+      setError(e instanceof Error ? e.message : t('app.error'))
     } finally {
       setLoading(false)
     }
@@ -74,14 +77,11 @@ export default function App() {
     setMessages(nextMessages)
     setChatLoading(true)
     try {
-      const res = await sendChat(nextMessages, itinerary, prefs.homeLocation, prefs.preferences)
+      const res = await sendChat(nextMessages, itinerary, prefs.homeLocation, prefs.preferences, lang)
       setMessages([...nextMessages, { role: 'assistant', content: res.reply }])
       if (res.itinerary) setItinerary(res.itinerary)
     } catch {
-      setMessages([
-        ...nextMessages,
-        { role: 'assistant', content: 'Sorry, I could not process that. Try again.' },
-      ])
+      setMessages([...nextMessages, { role: 'assistant', content: t('app.chatError') }])
     } finally {
       setChatLoading(false)
     }
@@ -91,8 +91,24 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <div>
-          <h1>Spontaneous Travel Agent</h1>
-          <p>North America day trips & weekends — plan on a whim.</p>
+          <h1>{t('app.title')}</h1>
+          <p>{t('app.subtitle')}</p>
+        </div>
+        <div className="lang-switch">
+          <button
+            type="button"
+            className={lang === 'en' ? 'active' : ''}
+            onClick={() => setLang('en')}
+          >
+            EN
+          </button>
+          <button
+            type="button"
+            className={lang === 'zh' ? 'active' : ''}
+            onClick={() => setLang('zh')}
+          >
+            中文
+          </button>
         </div>
       </header>
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useI18n } from '../i18n'
 import type { Location } from '../types'
 
 interface Props {
@@ -14,6 +15,7 @@ interface Suggestion {
 }
 
 export function AddressSearch({ value, onSelect, onTextChange }: Props) {
+  const { t } = useI18n()
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -67,7 +69,7 @@ export function AddressSearch({ value, onSelect, onTextChange }: Props) {
         value={value}
         onChange={(e) => onTextChange(e.target.value)}
         onFocus={() => suggestions.length > 0 && setOpen(true)}
-        placeholder="Search an address or place…"
+        placeholder={t('addr.placeholder')}
         autoComplete="off"
       />
       {loading && <span className="addr-spinner">…</span>}

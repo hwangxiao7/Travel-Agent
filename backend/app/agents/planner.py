@@ -4,19 +4,20 @@ from datetime import date, timedelta
 
 from app.models.schemas import Activity, DayPlan, Itinerary, PlanRequest, Preference
 from app.services.constraint_engine import ScoredDestination, find_candidates
+from app.services.i18n import lang_name, pack, tr
 from app.services.llm import fetch_weather_note, generate_summary
 
 
-def _packing_tips(prefs: list[Preference], trip_type: str) -> list[str]:
-    tips = ["Water bottle", "Snacks", "Phone charger / battery pack"]
+def _packing_tips(prefs: list[Preference], trip_type: str, lang: str) -> list[str]:
+    keys = ["water", "snacks", "charger"]
     tags = set(prefs)
     if Preference.HIKING in tags or Preference.NATIONAL_PARK in tags:
-        tips.extend(["Trail shoes", "Light rain layer", "Sunscreen"])
+        keys.extend(["trail_shoes", "rain_layer", "sunscreen"])
     if Preference.BEACH in tags:
-        tips.append("Sandals or water shoes")
+        keys.append("sandals")
     if trip_type == "weekend":
-        tips.extend(["Overnight bag", "Toiletries", "Warm layer for evenings"])
-    return tips
+        keys.extend(["overnight", "toiletries", "warm_layer"])
+    return [pack(k, lang) for k in keys]
 
 
 def _activities_from_dest(scored: ScoredDestination, day_index: int) -> list[Activity]:
@@ -55,7 +56,7 @@ def _build_itinerary(
         drive_hours=scored.drive_hours,
         days=days,
         alternatives=alternatives,
-        packing_tips=_packing_tips(request.preferences, request.trip_type),
+        packing_tips=_packing_tips(request.preferences, request.trip_type, request.language),
         weather_note=weather_note,
         summary=summary,
     )
@@ -70,7 +71,7 @@ async def create_plan(request: PlanRequest) -> tuple[Itinerary, list[dict]]:
 
     top = candidates[0]
     alts = [c.destination.name for c in candidates[1:3]]
-    weather = await fetch_weather_note(top.destination.lat, top.destination.lng)
+    weather = await fetch_weather_note(top.destination.lat, top.destination.lng, request.language)
 
     summary_prompt = (
         f"Write 2-3 sentences for a spontaneous trip plan.\n"
@@ -80,13 +81,17 @@ async def create_plan(request: PlanRequest) -> tuple[Itinerary, list[dict]]:
         f"Trip type: {request.trip_type}\n"
         f"Preferences: {', '.join(p.value for p in request.preferences) or 'general outdoor'}\n"
         f"Weather: {weather}\n"
-        f"Tone: enthusiastic but practical."
+        f"Tone: enthusiastic but practical.\n"
+        f"Respond in {lang_name(request.language)}. Keep place names in English."
     )
     summary = await generate_summary(summary_prompt)
     if not summary:
-        summary = (
-            f"Head to {top.destination.name} — {top.destination.highlight} "
-            f"About {top.drive_time} drive from your starting point."
+        summary = tr(
+            "summary_fallback",
+            request.language,
+            name=top.destination.name,
+            highlight=top.destination.highlight,
+            time=top.drive_time,
         )
 
     itinerary = _build_itinerary(request, top, alts, weather, summary)

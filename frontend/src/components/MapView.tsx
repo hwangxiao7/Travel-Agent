@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
-import mapboxgl from 'mapbox-gl'
-import 'mapbox-gl/dist/mapbox-gl.css'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
+import { useI18n } from '../i18n'
 import type { Candidate, Location } from '../types'
 
 interface Props {
@@ -9,80 +10,76 @@ interface Props {
   selected?: { lat: number; lng: number; name: string } | null
 }
 
+function pin(color: string, label: string): L.DivIcon {
+  return L.divIcon({
+    className: 'map-pin',
+    html: `<span class="pin-dot" style="background:${color}">${label}</span>`,
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
+    popupAnchor: [0, -14],
+  })
+}
+
 export function MapView({ origin, candidates, selected }: Props) {
+  const { t } = useI18n()
   const containerRef = useRef<HTMLDivElement>(null)
-  const mapRef = useRef<mapboxgl.Map | null>(null)
-  const token = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined
+  const mapRef = useRef<L.Map | null>(null)
+  const layerRef = useRef<L.LayerGroup | null>(null)
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
 
-    if (!token) return
+    const map = L.map(containerRef.current, { scrollWheelZoom: false }).setView(
+      [origin.lat, origin.lng],
+      8,
+    )
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+      maxZoom: 19,
+    }).addTo(map)
 
-    mapboxgl.accessToken = token
-    const map = new mapboxgl.Map({
-      container: containerRef.current,
-      style: 'mapbox://styles/mapbox/outdoors-v12',
-      center: [origin.lng, origin.lat],
-      zoom: 7,
-    })
+    layerRef.current = L.layerGroup().addTo(map)
     mapRef.current = map
 
     return () => {
       map.remove()
       mapRef.current = null
+      layerRef.current = null
     }
-  }, [origin.lat, origin.lng, token])
+  }, [origin.lat, origin.lng])
 
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !token) return
+    const layer = layerRef.current
+    if (!map || !layer) return
 
-    const markers: mapboxgl.Marker[] = []
+    layer.clearLayers()
 
-    const originMarker = new mapboxgl.Marker({ color: '#2563eb' })
-      .setLngLat([origin.lng, origin.lat])
-      .setPopup(new mapboxgl.Popup().setText(`Start: ${origin.label || 'Home'}`))
-      .addTo(map)
-    markers.push(originMarker)
+    L.marker([origin.lat, origin.lng], { icon: pin('#2563eb', '★') })
+      .bindPopup(`<strong>${t('map.start')}</strong><br/>${origin.label || ''}`)
+      .addTo(layer)
 
     candidates.forEach((c, i) => {
-      const color = selected?.name === c.name ? '#16a34a' : i === 0 ? '#ea580c' : '#64748b'
-      const m = new mapboxgl.Marker({ color })
-        .setLngLat([c.lng, c.lat])
-        .setPopup(
-          new mapboxgl.Popup().setHTML(
-            `<strong>${c.name}</strong><br/>${c.drive_time} drive<br/><em>${c.highlight}</em>`,
-          ),
+      const isSelected = selected?.name === c.name
+      const color = isSelected ? '#16a34a' : i === 0 ? '#ea580c' : '#64748b'
+      const badge = i === 0 ? '✓' : String(i + 1)
+      L.marker([c.lat, c.lng], { icon: pin(color, badge) })
+        .bindPopup(
+          `<strong>${c.name}</strong><br/>${c.drive_time} ${t('itin.drive')}<br/><em>${c.highlight}</em>`,
         )
-        .addTo(map)
-      markers.push(m)
+        .addTo(layer)
     })
 
-    if (candidates.length > 0) {
-      const bounds = new mapboxgl.LngLatBounds()
-      bounds.extend([origin.lng, origin.lat])
-      candidates.forEach((c) => bounds.extend([c.lng, c.lat]))
-      map.fitBounds(bounds, { padding: 48, maxZoom: 9 })
+    const points: L.LatLngExpression[] = [
+      [origin.lat, origin.lng],
+      ...candidates.map((c) => [c.lat, c.lng] as L.LatLngExpression),
+    ]
+    if (points.length > 1) {
+      map.fitBounds(L.latLngBounds(points), { padding: [40, 40], maxZoom: 10 })
+    } else {
+      map.setView([origin.lat, origin.lng], 9)
     }
-
-    return () => markers.forEach((m) => m.remove())
-  }, [candidates, origin, selected, token])
-
-  if (!token) {
-    return (
-      <div className="map-fallback">
-        <p>Add <code>VITE_MAPBOX_TOKEN</code> to <code>frontend/.env</code> for the interactive map.</p>
-        <ul>
-          {candidates.map((c) => (
-            <li key={c.name}>
-              <strong>{c.name}</strong> — {c.drive_time}
-            </li>
-          ))}
-        </ul>
-      </div>
-    )
-  }
+  }, [origin, candidates, selected, t])
 
   return <div ref={containerRef} className="map-container" />
 }

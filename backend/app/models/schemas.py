@@ -29,6 +29,7 @@ class PlanRequest(BaseModel):
     max_flight_hours: float = Field(default=2.0, ge=0.5, le=8.0)
     preferences: list[Preference] = Field(default_factory=list)
     allow_flight: bool = False
+    language: str = "en"
 
 
 class Activity(BaseModel):
@@ -71,6 +72,7 @@ class ChatRequest(BaseModel):
     current_itinerary: Itinerary | None = None
     origin: Location | None = None
     preferences: list[Preference] = Field(default_factory=list)
+    language: str = "en"
 
 
 class ChatResponse(BaseModel):

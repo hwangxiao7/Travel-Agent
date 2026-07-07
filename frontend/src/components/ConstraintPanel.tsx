@@ -1,14 +1,9 @@
 import { useState } from 'react'
+import { useI18n } from '../i18n'
 import type { Location, Preference, UserPrefs } from '../types'
 import { AddressSearch } from './AddressSearch'
 
-const ALL_PREFS: { id: Preference; label: string }[] = [
-  { id: 'national-park', label: 'National Park' },
-  { id: 'hiking', label: 'Hiking' },
-  { id: 'city-walk', label: 'City Walk' },
-  { id: 'forest', label: 'Forest' },
-  { id: 'beach', label: 'Beach' },
-]
+const ALL_PREFS: Preference[] = ['national-park', 'hiking', 'city-walk', 'forest', 'beach']
 
 interface Props {
   prefs: UserPrefs
@@ -43,6 +38,7 @@ export function ConstraintPanel({
   loading,
   onGenerate,
 }: Props) {
+  const { t } = useI18n()
   const [locating, setLocating] = useState(false)
   const [geoError, setGeoError] = useState<string | null>(null)
 
@@ -63,7 +59,7 @@ export function ConstraintPanel({
 
   const useMyLocation = () => {
     if (!('geolocation' in navigator)) {
-      setGeoError('Geolocation not supported in this browser.')
+      setGeoError(t('panel.geoUnsupported'))
       return
     }
     setLocating(true)
@@ -75,13 +71,13 @@ export function ConstraintPanel({
           homeLocation: {
             lat: Number(pos.coords.latitude.toFixed(4)),
             lng: Number(pos.coords.longitude.toFixed(4)),
-            label: 'My current location',
+            label: t('panel.myLocation'),
           },
         })
         setLocating(false)
       },
       () => {
-        setGeoError('Could not get your location — pick a city instead.')
+        setGeoError(t('panel.geoFailed'))
         setLocating(false)
       },
       { enableHighAccuracy: false, timeout: 8000 },
@@ -90,10 +86,10 @@ export function ConstraintPanel({
 
   return (
     <div className="panel constraint-panel">
-      <h2>Trip constraints</h2>
+      <h2>{t('panel.title')}</h2>
 
       <div className="field">
-        <span>Home base</span>
+        <span>{t('panel.homeBase')}</span>
         <AddressSearch
           value={prefs.homeLocation.label}
           onSelect={selectLocation}
@@ -102,44 +98,46 @@ export function ConstraintPanel({
       </div>
 
       <button type="button" className="ghost" disabled={locating} onClick={useMyLocation}>
-        {locating ? 'Locating…' : '📍 Use my current location'}
+        {locating ? t('panel.locating') : t('panel.useLocation')}
       </button>
       {geoError && <p className="geo-error">{geoError}</p>}
 
       <div className="field">
-        <span>Trip type</span>
+        <span>{t('panel.tripType')}</span>
         <div className="segmented">
           <button
             type="button"
             className={tripType === 'day-trip' ? 'active' : ''}
             onClick={() => onTripTypeChange('day-trip')}
           >
-            Day trip
+            {t('panel.dayTrip')}
           </button>
           <button
             type="button"
             className={tripType === 'weekend' ? 'active' : ''}
             onClick={() => onTripTypeChange('weekend')}
           >
-            Weekend
+            {t('panel.weekend')}
           </button>
         </div>
       </div>
 
       <label className="field">
-        <span>Start date</span>
+        <span>{t('panel.startDate')}</span>
         <input type="date" value={startDate} onChange={(e) => onStartDateChange(e.target.value)} />
       </label>
 
       {tripType === 'weekend' && (
         <label className="field">
-          <span>End date</span>
+          <span>{t('panel.endDate')}</span>
           <input type="date" value={endDate} onChange={(e) => onEndDateChange(e.target.value)} />
         </label>
       )}
 
       <label className="field">
-        <span>Max drive time: {maxDriveHours}h</span>
+        <span>
+          {t('panel.maxDrive')}: {maxDriveHours}h
+        </span>
         <input
           type="range"
           min={1}
@@ -157,28 +155,28 @@ export function ConstraintPanel({
             checked={allowFlight}
             onChange={(e) => onAllowFlightChange(e.target.checked)}
           />
-          Include flight-range destinations
+          {t('panel.includeFlight')}
         </label>
       )}
 
       <div className="field">
-        <span>Preferences</span>
+        <span>{t('panel.preferences')}</span>
         <div className="tags">
           {ALL_PREFS.map((p) => (
             <button
-              key={p.id}
+              key={p}
               type="button"
-              className={`tag ${prefs.preferences.includes(p.id) ? 'active' : ''}`}
-              onClick={() => togglePref(p.id)}
+              className={`tag ${prefs.preferences.includes(p) ? 'active' : ''}`}
+              onClick={() => togglePref(p)}
             >
-              {p.label}
+              {t(`pref.${p}`)}
             </button>
           ))}
         </div>
       </div>
 
       <button type="button" className="primary" disabled={loading} onClick={onGenerate}>
-        {loading ? 'Planning…' : 'Generate plan'}
+        {loading ? t('panel.planning') : t('panel.generate')}
       </button>
     </div>
   )
