@@ -84,12 +84,6 @@
   padding: 0.5rem 0.65rem;
 }
 
-.coords-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.5rem;
-}
-
 .segmented {
   display: flex;
   gap: 0.5rem;
@@ -157,6 +151,76 @@
 .primary:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.address-search {
+  position: relative;
+}
+
+.address-search input {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 0.5rem 0.65rem;
+}
+
+.addr-spinner {
+  position: absolute;
+  right: 0.6rem;
+  top: 0.5rem;
+  color: #94a3b8;
+}
+
+.addr-list {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  position: absolute;
+  z-index: 20;
+  width: 100%;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgb(15 23 42 / 12%);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.addr-list li {
+  padding: 0.5rem 0.65rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  border-top: 1px solid #f1f5f9;
+}
+
+.addr-list li:first-child {
+  border-top: none;
+}
+
+.addr-list li:hover {
+  background: #ecfdf5;
+}
+
+.ghost {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 0.5rem;
+  cursor: pointer;
+  margin-bottom: 0.75rem;
+  color: #334155;
+}
+
+.ghost:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.geo-error {
+  color: #b91c1c;
+  font-size: 0.82rem;
+  margin: -0.4rem 0 0.6rem;
 }
 
 .map-container {

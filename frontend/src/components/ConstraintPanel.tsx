@@ -1,4 +1,6 @@
-import type { Preference, UserPrefs } from '../types'
+import { useState } from 'react'
+import type { Location, Preference, UserPrefs } from '../types'
+import { AddressSearch } from './AddressSearch'
 
 const ALL_PREFS: { id: Preference; label: string }[] = [
   { id: 'national-park', label: 'National Park' },
@@ -41,6 +43,9 @@ export function ConstraintPanel({
   loading,
   onGenerate,
 }: Props) {
+  const [locating, setLocating] = useState(false)
+  const [geoError, setGeoError] = useState<string | null>(null)
+
   const togglePref = (id: Preference) => {
     const set = new Set(prefs.preferences)
     if (set.has(id)) set.delete(id)
@@ -48,54 +53,58 @@ export function ConstraintPanel({
     onChange({ ...prefs, preferences: [...set] })
   }
 
+  const selectLocation = (loc: Location) => {
+    onChange({ ...prefs, homeLocation: loc })
+  }
+
+  const setLabel = (label: string) => {
+    onChange({ ...prefs, homeLocation: { ...prefs.homeLocation, label } })
+  }
+
+  const useMyLocation = () => {
+    if (!('geolocation' in navigator)) {
+      setGeoError('Geolocation not supported in this browser.')
+      return
+    }
+    setLocating(true)
+    setGeoError(null)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        onChange({
+          ...prefs,
+          homeLocation: {
+            lat: Number(pos.coords.latitude.toFixed(4)),
+            lng: Number(pos.coords.longitude.toFixed(4)),
+            label: 'My current location',
+          },
+        })
+        setLocating(false)
+      },
+      () => {
+        setGeoError('Could not get your location — pick a city instead.')
+        setLocating(false)
+      },
+      { enableHighAccuracy: false, timeout: 8000 },
+    )
+  }
+
   return (
     <div className="panel constraint-panel">
       <h2>Trip constraints</h2>
 
-      <label className="field">
+      <div className="field">
         <span>Home base</span>
-        <input
+        <AddressSearch
           value={prefs.homeLocation.label}
-          onChange={(e) =>
-            onChange({
-              ...prefs,
-              homeLocation: { ...prefs.homeLocation, label: e.target.value },
-            })
-          }
-          placeholder="City or neighborhood"
+          onSelect={selectLocation}
+          onTextChange={setLabel}
         />
-      </label>
-
-      <div className="coords-row">
-        <label className="field">
-          <span>Lat</span>
-          <input
-            type="number"
-            step="0.0001"
-            value={prefs.homeLocation.lat}
-            onChange={(e) =>
-              onChange({
-                ...prefs,
-                homeLocation: { ...prefs.homeLocation, lat: parseFloat(e.target.value) || 0 },
-              })
-            }
-          />
-        </label>
-        <label className="field">
-          <span>Lng</span>
-          <input
-            type="number"
-            step="0.0001"
-            value={prefs.homeLocation.lng}
-            onChange={(e) =>
-              onChange({
-                ...prefs,
-                homeLocation: { ...prefs.homeLocation, lng: parseFloat(e.target.value) || 0 },
-              })
-            }
-          />
-        </label>
       </div>
+
+      <button type="button" className="ghost" disabled={locating} onClick={useMyLocation}>
+        {locating ? 'Locating…' : '📍 Use my current location'}
+      </button>
+      {geoError && <p className="geo-error">{geoError}</p>}
 
       <div className="field">
         <span>Trip type</span>

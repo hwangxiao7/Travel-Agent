@@ -46,7 +46,10 @@ async def generate_summary(prompt: str) -> str:
     if settings.openai_api_key:
         from openai import AsyncOpenAI
 
-        client = AsyncOpenAI(api_key=settings.openai_api_key)
+        client_kwargs = {"api_key": settings.openai_api_key}
+        if settings.openai_base_url:
+            client_kwargs["base_url"] = settings.openai_base_url
+        client = AsyncOpenAI(**client_kwargs)
         resp = await client.chat.completions.create(
             model=settings.openai_model,
             max_tokens=400,
@@ -62,8 +65,9 @@ async def chat_reply(prompt: str) -> str:
     if text:
         return text
     return (
-        "I can help refine your trip — try asking for a more relaxed pace, "
-        "a different destination, or activities suited for kids."
+        "I can adjust your trip right now — try: \"make it closer\", \"switch to a "
+        "different destination\", \"more relaxed pace\", \"pack in more stops\", or "
+        "\"make it family-friendly\". (Add your own OpenAI/Anthropic key for open-ended chat.)"
     )
 
 
