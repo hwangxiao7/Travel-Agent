@@ -4,8 +4,8 @@ import asyncio
 
 import httpx
 
-from app.config import settings
 from app.models.schemas import Preference
+from app.services import flights_api
 from app.services.airports import Airport, airport_by_iata, nearest_airport
 from app.services.fly_destinations import FLY_DESTINATIONS, FlyDestination
 from app.services.geo import format_duration, haversine_miles
@@ -67,13 +67,6 @@ def fly_candidates(
     return origin_ap, [item for _, _, item in scored]
 
 
-def _rapidapi_headers() -> dict[str, str]:
-    return {
-        "x-rapidapi-key": settings.rapidapi_key,
-        "x-rapidapi-host": settings.rapidapi_flights_host,
-    }
-
-
 def _parse_offer(itinerary: dict) -> dict | None:
     try:
         legs = itinerary["legs"]
@@ -100,23 +93,23 @@ def _parse_offer(itinerary: dict) -> dict | None:
 async def search_offers(
     origin_iata: str, dest_iata: str, departure_date: str, adults: int = 1, max_results: int = 5
 ) -> list[dict]:
-    """Return real flight offers from Flights Scraper Sky (RapidAPI), or [] if unavailable."""
-    if not settings.rapidapi_key:
+    """Return real flight offers from the flights provider, or [] if unavailable."""
+    if not flights_api.is_configured():
         return []
 
-    url = f"https://{settings.rapidapi_flights_host}/flights/search-one-way"
-    params = {
-        "fromEntityId": origin_iata,
-        "toEntityId": dest_iata,
-        "departDate": departure_date,
-        "adults": adults,
-        "currency": "USD",
-        "market": "US",
-        "locale": "en-US",
-    }
+    params = flights_api.query(
+        fromEntityId=origin_iata,
+        toEntityId=dest_iata,
+        departDate=departure_date,
+        adults=adults,
+    )
     try:
         async with httpx.AsyncClient(timeout=40.0) as client:
-            resp = await client.get(url, params=params, headers=_rapidapi_headers())
+            resp = await client.get(
+                flights_api.url(flights_api.SEARCH_ONE_WAY),
+                params=params,
+                headers=flights_api.headers(),
+            )
             resp.raise_for_status()
             itineraries = resp.json().get("data", {}).get("itineraries", [])
     except Exception:
@@ -136,17 +129,17 @@ async def _fetch_calendar(
     client: httpx.AsyncClient, origin_iata: str, dest_iata: str, depart_date: str
 ) -> list[dict]:
     """Raw daily-price list [{day, group, price}, ...] from cheapest-one-way, or []."""
-    url = f"https://{settings.rapidapi_flights_host}/flights/cheapest-one-way"
-    params = {
-        "fromEntityId": origin_iata,
-        "toEntityId": dest_iata,
-        "departDate": depart_date,
-        "currency": "USD",
-        "market": "US",
-        "locale": "en-US",
-    }
+    params = flights_api.query(
+        fromEntityId=origin_iata,
+        toEntityId=dest_iata,
+        departDate=depart_date,
+    )
     try:
-        resp = await client.get(url, params=params, headers=_rapidapi_headers())
+        resp = await client.get(
+            flights_api.url(flights_api.CHEAPEST_ONE_WAY),
+            params=params,
+            headers=flights_api.headers(),
+        )
         resp.raise_for_status()
         data = resp.json().get("data") or []
     except Exception:
@@ -172,7 +165,7 @@ def _summarize_calendar(days: list[dict]) -> dict:
 
 async def price_calendar(origin_iata: str, dest_iata: str, depart_date: str) -> dict:
     """Cheapest price + per-day calendar for a route, or {} if unavailable."""
-    if not settings.rapidapi_key:
+    if not flights_api.is_configured():
         return {}
     async with httpx.AsyncClient(timeout=30.0) as client:
         days = await _fetch_calendar(client, origin_iata, dest_iata, depart_date)
@@ -187,7 +180,7 @@ async def cheapest_prices(
     routes: list of (destination_name, destination_iata).
     Returns {destination_name: {starting_price, cheapest_day, currency}}.
     """
-    if not settings.rapidapi_key or not routes:
+    if not flights_api.is_configured() or not routes:
         return {}
 
     sem = asyncio.Semaphore(max_concurrency)

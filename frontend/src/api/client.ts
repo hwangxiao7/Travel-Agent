@@ -10,19 +10,27 @@ import type {
   PlanResponse,
   Preference,
 } from '../types'
+import { apiUrl, type EndpointKey } from './endpoints'
+
+async function postJson<T>(key: EndpointKey, body: unknown, fallbackError: string): Promise<T> {
+  const res = await fetch(apiUrl(key), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || fallbackError)
+  }
+  return res.json()
+}
 
 export async function fetchFlyPrices(
   origin: Location,
   destinations: string[],
   departDate: string,
 ): Promise<FlyPricesResult> {
-  const res = await fetch('/api/fly-prices', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ origin, destinations, depart_date: departDate }),
-  })
-  if (!res.ok) throw new Error('Failed to load fly prices')
-  return res.json()
+  return postJson('flyPrices', { origin, destinations, depart_date: departDate }, 'Failed to load fly prices')
 }
 
 export async function fetchFlightCalendar(
@@ -30,13 +38,11 @@ export async function fetchFlightCalendar(
   destinationName: string,
   departDate: string,
 ): Promise<CalendarResult> {
-  const res = await fetch('/api/flights/calendar', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ origin, destination_name: destinationName, depart_date: departDate }),
-  })
-  if (!res.ok) throw new Error('Failed to load flight calendar')
-  return res.json()
+  return postJson(
+    'flightsCalendar',
+    { origin, destination_name: destinationName, depart_date: departDate },
+    'Failed to load flight calendar',
+  )
 }
 
 export async function fetchFlyDestinations(
@@ -44,13 +50,11 @@ export async function fetchFlyDestinations(
   maxFlightHours: number,
   preferences: Preference[],
 ): Promise<{ origin_airport: string; destinations: FlyDestination[] }> {
-  const res = await fetch('/api/fly-destinations', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ origin, max_flight_hours: maxFlightHours, preferences }),
-  })
-  if (!res.ok) throw new Error('Failed to load fly destinations')
-  return res.json()
+  return postJson(
+    'flyDestinations',
+    { origin, max_flight_hours: maxFlightHours, preferences },
+    'Failed to load fly destinations',
+  )
 }
 
 export async function planFlyDestination(body: {
@@ -62,16 +66,7 @@ export async function planFlyDestination(body: {
   preferences: Preference[]
   language: string
 }): Promise<{ itinerary: Itinerary }> {
-  const res = await fetch('/api/fly-plan', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err.detail || 'Failed to plan fly trip')
-  }
-  return res.json()
+  return postJson('flyPlan', body, 'Failed to plan fly trip')
 }
 
 export async function searchFlights(
@@ -79,13 +74,11 @@ export async function searchFlights(
   destinationName: string,
   departureDate: string,
 ): Promise<FlightsResult> {
-  const res = await fetch('/api/flights', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ origin, destination_name: destinationName, departure_date: departureDate }),
-  })
-  if (!res.ok) throw new Error('Flight search failed')
-  return res.json()
+  return postJson(
+    'flights',
+    { origin, destination_name: destinationName, departure_date: departureDate },
+    'Flight search failed',
+  )
 }
 
 export interface SelectRequest {
@@ -99,29 +92,11 @@ export interface SelectRequest {
 }
 
 export async function selectDestination(body: SelectRequest): Promise<{ itinerary: Itinerary }> {
-  const res = await fetch('/api/select', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err.detail || 'Failed to select destination')
-  }
-  return res.json()
+  return postJson('select', body, 'Failed to select destination')
 }
 
 export async function createPlan(body: PlanRequest): Promise<PlanResponse> {
-  const res = await fetch('/api/plan', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err.detail || 'Failed to generate plan')
-  }
-  return res.json()
+  return postJson('plan', body, 'Failed to generate plan')
 }
 
 export async function sendChat(
@@ -131,17 +106,15 @@ export async function sendChat(
   preferences: Preference[],
   language: string,
 ): Promise<{ reply: string; itinerary: Itinerary | null }> {
-  const res = await fetch('/api/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+  return postJson(
+    'chat',
+    {
       messages,
       current_itinerary: currentItinerary,
       origin,
       preferences,
       language,
-    }),
-  })
-  if (!res.ok) throw new Error('Chat request failed')
-  return res.json()
+    },
+    'Chat request failed',
+  )
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { apiUrl } from '../api/endpoints'
 import { useI18n } from '../i18n'
 import type { Location } from '../types'
 
@@ -35,7 +36,7 @@ export function AddressSearch({ value, onSelect, onTextChange }: Props) {
     const timer = setTimeout(async () => {
       setLoading(true)
       try {
-        const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`)
+        const res = await fetch(apiUrl('geocode', { q }))
         const data = await res.json()
         setSuggestions(data.results || [])
         setOpen(true)
