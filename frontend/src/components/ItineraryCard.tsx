@@ -1,7 +1,13 @@
 import { useState } from 'react'
 import { useI18n } from '../i18n'
-import type { EventItem, Itinerary, Location, Place } from '../types'
+import type { EventItem, Itinerary, Location, Place, SocialPost } from '../types'
 import { copyShareText, downloadICS, googleMapsUrl } from '../utils/export'
+
+function compact(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
+  return String(n)
+}
 
 interface Props {
   itinerary: Itinerary | null
@@ -64,6 +70,47 @@ export function ItineraryCard({ itinerary, origin }: Props) {
                   {p.note ? ` · ${p.note}` : ''}
                 </span>
               </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+
+  const renderViral = (places: Place[]) =>
+    places.length > 0 && (
+      <section>
+        <h3>{t('itin.viral')}</h3>
+        <ul className="places">
+          {places.map((p) => (
+            <li key={`viral-${p.name}-${p.lat}`} className="place-item">
+              <span className="place-icon">🔥</span>
+              <div>
+                <strong>{p.name}</strong>
+                <span className="place-cat">
+                  {p.kind === 'food' ? t('itin.food') : t('itin.fun')} · {t('itin.viralTag')}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+
+  const renderGuides = (guides: SocialPost[]) =>
+    guides.length > 0 && (
+      <section>
+        <h3>{t('itin.guides')}</h3>
+        <ul className="guides">
+          {guides.map((g) => (
+            <li key={g.url || g.title} className="guide-item">
+              <a href={g.url} target="_blank" rel="noreferrer">
+                {g.title}
+              </a>
+              <span className="guide-meta">
+                {[g.author && `@${g.author}`, g.views ? `▶ ${compact(g.views)}` : '', g.likes ? `♥ ${compact(g.likes)}` : '']
+                  .filter(Boolean)
+                  .join(' · ')}
+              </span>
             </li>
           ))}
         </ul>
@@ -152,9 +199,11 @@ export function ItineraryCard({ itinerary, origin }: Props) {
         </section>
       ))}
 
+      {renderViral(itinerary.viral)}
       {renderEvents(itinerary.events)}
       {renderPlaces(itinerary.nearby_food, t('itin.food'))}
       {renderPlaces(itinerary.nearby_fun, t('itin.fun'))}
+      {renderGuides(itinerary.guides)}
 
       {itinerary.alternatives.length > 0 && (
         <section>

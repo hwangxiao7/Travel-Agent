@@ -29,6 +29,7 @@ from app.services.llm import fetch_weather_note, generate_summary
 from app.services.places import fetch_nearby_places
 from app.services.retrieval import retriever
 from app.services.routing import drive_duration_hours, drive_durations_hours
+from app.services.social import social_highlights
 
 
 def _packing_tips(prefs: list[Preference], trip_type: str, lang: str) -> list[str]:
@@ -159,9 +160,10 @@ async def create_plan(request: PlanRequest) -> tuple[Itinerary, list[dict]]:
     await _refine_drive_times(request.origin, candidates)
     top = candidates[0]
     alts = [c.destination.name for c in candidates[1:3]]
-    weather, (food, fun, events) = await asyncio.gather(
+    weather, (food, fun, events), (guides, viral) = await asyncio.gather(
         fetch_weather_note(top.destination.lat, top.destination.lng, request.language),
         _local_highlights(top.destination.lat, top.destination.lng, request.start_date),
+        social_highlights(top.destination.name, top.destination.lat, top.destination.lng, request.language),
     )
 
     summary_prompt = (
@@ -187,6 +189,7 @@ async def create_plan(request: PlanRequest) -> tuple[Itinerary, list[dict]]:
 
     itinerary = _build_itinerary(request, top, alts, weather, summary, food, fun, events)
     itinerary = await _apply_grounding(itinerary, request, food, fun, events)
+    itinerary = itinerary.model_copy(update={"guides": guides, "viral": viral})
     candidate_payload = [
         {
             "name": c.destination.name,
@@ -230,9 +233,10 @@ async def plan_for_destination(req: SelectRequest) -> Itinerary:
         language=req.language,
     )
     alts = [c.destination.name for c in find_candidates(plan_req, limit=4) if c.destination.name != dest.name][:2]
-    weather, (food, fun, events) = await asyncio.gather(
+    weather, (food, fun, events), (guides, viral) = await asyncio.gather(
         fetch_weather_note(dest.lat, dest.lng, req.language),
         _local_highlights(dest.lat, dest.lng, req.start_date),
+        social_highlights(dest.name, dest.lat, dest.lng, req.language),
     )
 
     summary_prompt = (
@@ -256,7 +260,8 @@ async def plan_for_destination(req: SelectRequest) -> Itinerary:
         )
 
     itinerary = _build_itinerary(plan_req, scored, alts, weather, summary, food, fun, events)
-    return await _apply_grounding(itinerary, req, food, fun, events)
+    itinerary = await _apply_grounding(itinerary, req, food, fun, events)
+    return itinerary.model_copy(update={"guides": guides, "viral": viral})
 
 
 async def plan_for_fly_destination(req: FlyPlanRequest) -> Itinerary:
@@ -287,9 +292,10 @@ async def plan_for_fly_destination(req: FlyPlanRequest) -> Itinerary:
         allow_flight=True,
         language=req.language,
     )
-    weather, (food, fun, events) = await asyncio.gather(
+    weather, (food, fun, events), (guides, viral) = await asyncio.gather(
         fetch_weather_note(dest.lat, dest.lng, req.language),
         _local_highlights(dest.lat, dest.lng, req.start_date),
+        social_highlights(dest.name, dest.lat, dest.lng, req.language),
     )
 
     summary_prompt = (
@@ -319,6 +325,8 @@ async def plan_for_fly_destination(req: FlyPlanRequest) -> Itinerary:
             "travel_mode": "fly",
             "origin_airport": origin_ap.iata,
             "destination_airport": dest.airport,
+            "guides": guides,
+            "viral": viral,
         }
     )
 

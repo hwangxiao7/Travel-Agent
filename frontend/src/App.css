@@ -702,6 +702,34 @@
   margin-top: 0.1rem;
 }
 
+.guides {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.guide-item {
+  padding: 0.5rem 0;
+  border-top: 1px solid #f1f5f9;
+}
+
+.guide-item a {
+  color: #0369a1;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.guide-item a:hover {
+  text-decoration: underline;
+}
+
+.guide-meta {
+  display: block;
+  color: #64748b;
+  font-size: 0.78rem;
+  margin-top: 0.15rem;
+}
+
 .search-field {
   margin-top: 0.75rem;
   border-top: 1px dashed #e2e8f0;

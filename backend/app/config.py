@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     ticketmaster_api_key: str = ""
     rapidapi_key: str = ""
     rapidapi_flights_host: str = "flights-sky.p.rapidapi.com"
+    # TikTok travel-guide scraping (subscribe to the API on RapidAPI first).
+    rapidapi_tiktok_host: str = "tiktok-scraper7.p.rapidapi.com"
     cors_origins: str = "http://localhost:5173"
 
 

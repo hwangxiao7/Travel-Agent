@@ -52,6 +52,7 @@ class Place(BaseModel):
     lng: float
     note: str = ""  # cuisine or short descriptor
     recommended: bool = False  # notable (has wikidata/wikipedia tag)
+    trending: bool = False  # surfaced from social media (TikTok travel guides)
 
 
 class Event(BaseModel):
@@ -60,6 +61,16 @@ class Event(BaseModel):
     venue: str = ""
     category: str = ""
     url: str = ""
+
+
+class SocialPost(BaseModel):
+    title: str
+    author: str = ""
+    url: str = ""
+    likes: int = 0
+    views: int = 0
+    thumbnail: str = ""
+    platform: str = "tiktok"
 
 
 class Itinerary(BaseModel):
@@ -79,6 +90,8 @@ class Itinerary(BaseModel):
     nearby_food: list[Place] = Field(default_factory=list)
     nearby_fun: list[Place] = Field(default_factory=list)
     events: list[Event] = Field(default_factory=list)
+    viral: list[Place] = Field(default_factory=list)  # 🔥 spots pulled from social guides
+    guides: list[SocialPost] = Field(default_factory=list)  # TikTok travel-guide posts
 
 
 class PlanResponse(BaseModel):

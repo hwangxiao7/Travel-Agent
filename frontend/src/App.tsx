@@ -277,6 +277,7 @@ export default function App() {
             onSelect={handleSelectCandidate}
             food={itinerary?.nearby_food ?? []}
             fun={itinerary?.nearby_fun ?? []}
+            viral={itinerary?.viral ?? []}
             flyDestinations={flyDestinations}
           />
           <CandidateList

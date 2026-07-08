@@ -50,6 +50,7 @@ export interface Place {
   lng: number
   note: string
   recommended: boolean
+  trending?: boolean
 }
 
 export interface EventItem {
@@ -58,6 +59,16 @@ export interface EventItem {
   venue: string
   category: string
   url: string
+}
+
+export interface SocialPost {
+  title: string
+  author: string
+  url: string
+  likes: number
+  views: number
+  thumbnail: string
+  platform: string
 }
 
 export interface Itinerary {
@@ -77,6 +88,8 @@ export interface Itinerary {
   nearby_food: Place[]
   nearby_fun: Place[]
   events: EventItem[]
+  viral: Place[]
+  guides: SocialPost[]
 }
 
 export interface FlyDestination {
