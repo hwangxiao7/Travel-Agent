@@ -12,9 +12,15 @@ _HEADERS = {"User-Agent": "spontaneous-travel-agent/0.1 (dev)"}
 
 # amenity=* values treated as "food"
 FOOD_AMENITIES = {"restaurant", "cafe", "fast_food", "bar", "pub", "ice_cream", "food_court"}
+# shop=* values that are really "good eats" (indie bakeries, coffee roasters, etc.)
+FOOD_SHOPS = {"bakery", "pastry", "confectionery", "deli", "coffee", "chocolate", "cheese"}
 # tourism=* / leisure=* values treated as "fun"
 FUN_TOURISM = {"attraction", "viewpoint", "museum", "artwork", "theme_park", "zoo", "aquarium", "gallery"}
 FUN_LEISURE = {"park", "nature_reserve", "garden"}
+# Niche / offbeat "fun": historic sites, indie shops, markets, small venues.
+FUN_HISTORIC = {"monument", "memorial", "castle", "ruins", "archaeological_site", "fort", "tower"}
+FUN_SHOPS = {"books", "art", "antiques", "craft", "music", "second_hand"}
+FUN_AMENITIES = {"marketplace", "arts_centre", "theatre", "cinema"}
 
 # Map raw OSM tag values -> stable machine category keys the frontend can localize.
 _CATEGORY = {
@@ -25,6 +31,15 @@ _CATEGORY = {
     "pub": "bar",
     "ice_cream": "ice_cream",
     "food_court": "restaurant",
+    # food shops
+    "bakery": "bakery",
+    "pastry": "bakery",
+    "confectionery": "sweets",
+    "chocolate": "sweets",
+    "deli": "deli",
+    "coffee": "cafe",
+    "cheese": "deli",
+    # fun / tourism
     "attraction": "attraction",
     "viewpoint": "viewpoint",
     "museum": "museum",
@@ -36,19 +51,51 @@ _CATEGORY = {
     "park": "park",
     "nature_reserve": "park",
     "garden": "park",
+    # niche fun
+    "monument": "historic",
+    "memorial": "historic",
+    "castle": "historic",
+    "ruins": "historic",
+    "archaeological_site": "historic",
+    "fort": "historic",
+    "tower": "historic",
+    "books": "shop",
+    "art": "shop",
+    "antiques": "shop",
+    "craft": "shop",
+    "music": "shop",
+    "second_hand": "shop",
+    "marketplace": "market",
+    "arts_centre": "theatre",
+    "theatre": "theatre",
+    "cinema": "theatre",
+    # walkable
+    "square": "walk",
+    "pedestrian": "walk",
 }
 
 
 def _build_query(lat: float, lng: float, radius_m: int, cap: int) -> str:
-    food = "|".join(sorted(FOOD_AMENITIES))
+    r = radius_m
+    food_a = "|".join(sorted(FOOD_AMENITIES))
+    food_s = "|".join(sorted(FOOD_SHOPS))
     tourism = "|".join(sorted(FUN_TOURISM))
     leisure = "|".join(sorted(FUN_LEISURE))
+    historic = "|".join(sorted(FUN_HISTORIC))
+    fun_s = "|".join(sorted(FUN_SHOPS))
+    fun_a = "|".join(sorted(FUN_AMENITIES))
     return (
-        f"[out:json][timeout:15];"
+        f"[out:json][timeout:20];"
         f"("
-        f'node["amenity"~"^({food})$"]["name"](around:{radius_m},{lat},{lng});'
-        f'node["tourism"~"^({tourism})$"]["name"](around:{radius_m},{lat},{lng});'
-        f'node["leisure"~"^({leisure})$"]["name"](around:{radius_m},{lat},{lng});'
+        f'node["amenity"~"^({food_a})$"]["name"](around:{r},{lat},{lng});'
+        f'node["shop"~"^({food_s})$"]["name"](around:{r},{lat},{lng});'
+        f'node["tourism"~"^({tourism})$"]["name"](around:{r},{lat},{lng});'
+        f'node["leisure"~"^({leisure})$"]["name"](around:{r},{lat},{lng});'
+        f'node["historic"~"^({historic})$"]["name"](around:{r},{lat},{lng});'
+        f'node["shop"~"^({fun_s})$"]["name"](around:{r},{lat},{lng});'
+        f'node["amenity"~"^({fun_a})$"]["name"](around:{r},{lat},{lng});'
+        f'node["place"="square"]["name"](around:{r},{lat},{lng});'
+        f'way["highway"="pedestrian"]["name"](around:{r},{lat},{lng});'
         f");"
         f"out center {cap};"
     )
@@ -65,13 +112,23 @@ def _to_place(el: dict) -> Place | None:
         return None
 
     amenity = tags.get("amenity")
-    if amenity in FOOD_AMENITIES:
+    shop = tags.get("shop")
+    if amenity in FOOD_AMENITIES or shop in FOOD_SHOPS:
         kind = "food"
-        raw = amenity
+        raw = amenity if amenity in FOOD_AMENITIES else shop
         note = tags.get("cuisine", "").replace("_", " ").replace(";", ", ")
     else:
         kind = "fun"
-        raw = tags.get("tourism") or tags.get("leisure") or "attraction"
+        raw = (
+            tags.get("tourism")
+            or tags.get("historic")
+            or shop
+            or amenity
+            or tags.get("leisure")
+            or ("pedestrian" if tags.get("highway") == "pedestrian" else "")
+            or ("square" if tags.get("place") == "square" else "")
+            or "attraction"
+        )
         note = tags.get("description", "")
 
     recommended = "wikidata" in tags or "wikipedia" in tags
@@ -121,7 +178,30 @@ async def fetch_nearby_places(
     def _dist(p: Place) -> float:
         return haversine_miles(lat, lng, p.lat, p.lng)
 
-    # Food: nearest first. Fun: notable (wiki-tagged) first, then nearest.
-    food.sort(key=_dist)
+    # Food: notable first, then nearest.
+    food.sort(key=lambda p: (not p.recommended, _dist(p)))
+    # Fun: notable first, then nearest — but diversify categories so niche spots
+    # (historic, indie shops, markets, walks) surface instead of six parks.
     fun.sort(key=lambda p: (not p.recommended, _dist(p)))
-    return food[:limit_each], fun[:limit_each]
+    return _diversify(food, limit_each), _diversify(fun, limit_each)
+
+
+def _diversify(places: list[Place], limit: int, max_per_cat: int = 2) -> list[Place]:
+    """Pick up to `limit`, capping each category so results stay varied.
+    Falls back to filling remaining slots in original order."""
+    picked: list[Place] = []
+    counts: dict[str, int] = {}
+    leftovers: list[Place] = []
+    for p in places:
+        if counts.get(p.category, 0) < max_per_cat:
+            picked.append(p)
+            counts[p.category] = counts.get(p.category, 0) + 1
+        else:
+            leftovers.append(p)
+        if len(picked) >= limit:
+            return picked
+    for p in leftovers:
+        if len(picked) >= limit:
+            break
+        picked.append(p)
+    return picked

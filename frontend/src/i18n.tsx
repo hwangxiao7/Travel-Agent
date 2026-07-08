@@ -74,6 +74,14 @@ const TRANSLATIONS: Record<Lang, Dict> = {
     'place.zoo': 'Zoo',
     'place.aquarium': 'Aquarium',
     'place.park': 'Park',
+    'place.bakery': 'Bakery',
+    'place.sweets': 'Sweets',
+    'place.deli': 'Deli',
+    'place.historic': 'Historic site',
+    'place.shop': 'Indie shop',
+    'place.market': 'Market',
+    'place.theatre': 'Theatre / venue',
+    'place.walk': 'Great for a stroll',
 
     'addr.placeholder': 'Search an address or place…',
 
@@ -164,6 +172,14 @@ const TRANSLATIONS: Record<Lang, Dict> = {
     'place.zoo': '动物园',
     'place.aquarium': '水族馆',
     'place.park': '公园',
+    'place.bakery': '面包甜点',
+    'place.sweets': '甜品糖果',
+    'place.deli': '熟食小馆',
+    'place.historic': '历史古迹',
+    'place.shop': '小众好店',
+    'place.market': '市集',
+    'place.theatre': '剧院/演出',
+    'place.walk': '适合溜达',
 
     'addr.placeholder': '搜索地址或地点…',
 

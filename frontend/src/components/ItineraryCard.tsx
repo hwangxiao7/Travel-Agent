@@ -23,6 +23,14 @@ const CATEGORY_ICON: Record<string, string> = {
   zoo: '🦁',
   aquarium: '🐠',
   park: '🌳',
+  bakery: '🥐',
+  sweets: '🍬',
+  deli: '🥪',
+  historic: '🏛️',
+  shop: '🛍️',
+  market: '🧺',
+  theatre: '🎭',
+  walk: '🚶',
 }
 
 export function ItineraryCard({ itinerary, origin }: Props) {
