@@ -1,8 +1,11 @@
+import { useState } from 'react'
 import { useI18n } from '../i18n'
-import type { EventItem, Itinerary, Place } from '../types'
+import type { EventItem, Itinerary, Location, Place } from '../types'
+import { copyShareText, downloadICS, googleMapsUrl } from '../utils/export'
 
 interface Props {
   itinerary: Itinerary | null
+  origin?: Location
 }
 
 const CATEGORY_ICON: Record<string, string> = {
@@ -22,10 +25,20 @@ const CATEGORY_ICON: Record<string, string> = {
   park: '🌳',
 }
 
-export function ItineraryCard({ itinerary }: Props) {
+export function ItineraryCard({ itinerary, origin }: Props) {
   const { t } = useI18n()
+  const [copied, setCopied] = useState(false)
 
   const catLabel = (c: string) => t(`place.${c}`)
+
+  const handleCopy = async () => {
+    if (!itinerary) return
+    const ok = await copyShareText(itinerary)
+    if (ok) {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1800)
+    }
+  }
 
   const renderPlaces = (places: Place[], title: string) =>
     places.length > 0 && (
@@ -95,6 +108,22 @@ export function ItineraryCard({ itinerary }: Props) {
           · {itinerary.weather_note}
         </p>
         <p className="summary">{itinerary.summary}</p>
+        <div className="itin-actions">
+          <button type="button" onClick={() => downloadICS(itinerary)}>
+            {t('itin.export')}
+          </button>
+          <a
+            className="btn-link"
+            href={googleMapsUrl(origin, itinerary)}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {t('itin.maps')}
+          </a>
+          <button type="button" onClick={handleCopy}>
+            {copied ? t('itin.copied') : t('itin.copy')}
+          </button>
+        </div>
       </header>
 
       {itinerary.days.map((day) => (

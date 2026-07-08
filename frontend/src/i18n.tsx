@@ -54,6 +54,10 @@ const TRANSLATIONS: Record<Lang, Dict> = {
     'itin.food': 'Good eats nearby',
     'itin.fun': 'Things to do nearby',
     'itin.events': "What's on",
+    'itin.export': '📅 Add to calendar',
+    'itin.maps': '🧭 Open in Maps',
+    'itin.copy': '📋 Copy',
+    'itin.copied': '✓ Copied',
 
     'place.top': 'Top pick',
     'place.restaurant': 'Restaurant',
@@ -140,6 +144,10 @@ const TRANSLATIONS: Record<Lang, Dict> = {
     'itin.food': '附近好吃的',
     'itin.fun': '附近好玩的',
     'itin.events': '近期活动',
+    'itin.export': '📅 加入日历',
+    'itin.maps': '🧭 地图导航',
+    'itin.copy': '📋 复制',
+    'itin.copied': '✓ 已复制',
 
     'place.top': '高优推荐',
     'place.restaurant': '餐厅',

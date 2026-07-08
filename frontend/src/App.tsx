@@ -297,7 +297,7 @@ export default function App() {
             onSelect={handleSelectFly}
             onSearchFlights={handleSearchFlights}
           />
-          <ItineraryCard itinerary={itinerary} />
+          <ItineraryCard itinerary={itinerary} origin={prefs.homeLocation} />
         </section>
       </main>
     </div>
