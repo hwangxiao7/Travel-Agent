@@ -43,9 +43,11 @@ Open http://localhost:5173
 | `OPENAI_API_KEY` | backend `.env` | GPT-4o-mini summaries & chat |
 | `ANTHROPIC_API_KEY` | backend `.env` | Claude Haiku summaries & chat |
 | `OPENWEATHER_API_KEY` | backend `.env` | Live weather note on plan |
-| `AMADEUS_API_KEY` / `AMADEUS_API_SECRET` | backend `.env` | Live flight search (fares + times). Free key from [developers.amadeus.com](https://developers.amadeus.com) |
+| `RAPIDAPI_KEY` | backend `.env` | Live flight search (fares + times) via [Sky-Scrapper on RapidAPI](https://rapidapi.com/apiheya/api/sky-scrapper) (free tier) |
 
-**Flights:** turn on the weekend flight toggle to see fly-to outdoor destinations (Zion, Grand Canyon, Yellowstone, Banff…) with estimated flight times. Add Amadeus keys for real fares and schedules — without them it gracefully shows estimates only.
+**Flights:** turn on the weekend flight toggle to see fly-to outdoor destinations (Zion, Grand Canyon, Yellowstone, Banff…) with estimated flight times. With a RapidAPI key each card shows a real **"from $X" starting price**, and searching a destination lists **live fares/schedules** plus the **cheapest days** (click a day to search that date). Without a key it gracefully falls back to estimates. (Amadeus Self-Service was dropped: it stopped new signups and shuts down July 2026.)
+
+> Note: live prices call the RapidAPI free tier, which has a monthly quota. Price lookups are best-effort and fail silently to estimates if the quota is hit.
 
 The interactive map uses **Leaflet + OpenStreetMap** — free, no token required.
 
@@ -56,8 +58,10 @@ User preferences (home location, tags) persist in **browser localStorage** — n
 - `POST /api/plan` — generate itinerary from constraints
 - `POST /api/select` — build itinerary for a chosen drive candidate
 - `POST /api/fly-destinations` — list fly-to destinations within a flight-time limit
+- `POST /api/fly-prices` — cheapest starting price per fly-to destination (batch)
 - `POST /api/fly-plan` — build itinerary for a chosen fly-to destination
 - `POST /api/flights` — search real/estimated flights (origin → destination, date)
+- `POST /api/flights/calendar` — cheapest price per day for a route (pick the best day)
 - `POST /api/chat` — refine plan via conversation
 - `POST /api/geocode` — address → coordinates
 - `GET /api/health` — health check

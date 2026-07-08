@@ -66,8 +66,9 @@ const TRANSLATIONS: Record<Lang, Dict> = {
     'fly.offers': 'Flight offers',
     'fly.nonstop': 'nonstop',
     'fly.stops': 'stops',
-    'fly.noLive': 'Estimated flight time shown. Add an Amadeus API key for live fares.',
+    'fly.noLive': 'Estimated flight time shown. Add a RapidAPI key for live fares.',
     'fly.none': 'No fly-to destinations within your flight-time limit.',
+    'fly.cheapestDays': 'Cheapest days',
     'itin.flight': 'flight',
   },
   zh: {
@@ -129,8 +130,9 @@ const TRANSLATIONS: Record<Lang, Dict> = {
     'fly.offers': '航班选项',
     'fly.nonstop': '直飞',
     'fly.stops': '中转',
-    'fly.noLive': '当前为飞行时间估算。配置 Amadeus API key 后可显示真实票价。',
+    'fly.noLive': '当前为飞行时间估算。配置 RapidAPI key 后可显示真实票价。',
     'fly.none': '在你的飞行时间上限内没有可飞目的地。',
+    'fly.cheapestDays': '最便宜的日子',
     'itin.flight': '飞行',
   },
 }

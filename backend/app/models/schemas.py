@@ -139,6 +139,44 @@ class FlightsResponse(BaseModel):
     has_live_data: bool
 
 
+class PriceSummary(BaseModel):
+    starting_price: int
+    cheapest_day: str
+    currency: str = "USD"
+
+
+class FlyPricesRequest(BaseModel):
+    origin: Location
+    destinations: list[str] = Field(default_factory=list)
+    depart_date: str
+
+
+class FlyPricesResponse(BaseModel):
+    origin_airport: str
+    prices: dict[str, PriceSummary]
+
+
+class CalendarDay(BaseModel):
+    day: str
+    price: int
+    group: str = ""
+
+
+class CalendarRequest(BaseModel):
+    origin: Location
+    destination_name: str
+    depart_date: str
+
+
+class CalendarResponse(BaseModel):
+    origin_airport: str
+    arrival_airport: str
+    currency: str = "USD"
+    starting_price: int | None = None
+    cheapest_day: str | None = None
+    days: list[CalendarDay] = Field(default_factory=list)
+
+
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str

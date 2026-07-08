@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import re
-import time
+import asyncio
 
 import httpx
 
@@ -13,8 +12,6 @@ from app.services.geo import format_duration, haversine_miles
 
 _AVG_CRUISE_MPH = 500.0
 _FLIGHT_OVERHEAD_H = 0.5  # taxi, climb, descent
-
-_token_cache: dict[str, float | str] = {"value": "", "expires_at": 0.0}
 
 
 def estimate_flight(origin: Airport, dest: Airport) -> dict:
@@ -70,85 +67,145 @@ def fly_candidates(
     return origin_ap, [item for _, _, item in scored]
 
 
-def _parse_iso_duration(value: str) -> str:
-    m = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?", value or "")
-    if not m:
-        return value
-    h = int(m.group(1) or 0)
-    mins = int(m.group(2) or 0)
-    return format_duration(h + mins / 60)
-
-
-async def _get_token() -> str:
-    if not (settings.amadeus_api_key and settings.amadeus_api_secret):
-        return ""
-    now = time.time()
-    if _token_cache["value"] and float(_token_cache["expires_at"]) > now + 30:
-        return str(_token_cache["value"])
-
-    url = f"{settings.amadeus_base_url}/v1/security/oauth2/token"
-    data = {
-        "grant_type": "client_credentials",
-        "client_id": settings.amadeus_api_key,
-        "client_secret": settings.amadeus_api_secret,
+def _rapidapi_headers() -> dict[str, str]:
+    return {
+        "x-rapidapi-key": settings.rapidapi_key,
+        "x-rapidapi-host": settings.rapidapi_flights_host,
     }
+
+
+def _parse_offer(itinerary: dict) -> dict | None:
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(url, data=data)
-            resp.raise_for_status()
-            payload = resp.json()
-        _token_cache["value"] = payload["access_token"]
-        _token_cache["expires_at"] = now + payload.get("expires_in", 1800)
-        return str(_token_cache["value"])
-    except Exception:
-        return ""
+        legs = itinerary["legs"]
+        first, last = legs[0], legs[-1]
+        total_minutes = sum(leg.get("durationInMinutes", 0) for leg in legs)
+        carriers = first.get("carriers", {}).get("marketing", [])
+        carrier = carriers[0].get("name", "") if carriers else ""
+        price = itinerary.get("price", {})
+        return {
+            "price": price.get("formatted", str(price.get("raw", ""))).lstrip("$"),
+            "currency": "USD",
+            "duration": format_duration(total_minutes / 60),
+            "stops": max((leg.get("stopCount", 0) for leg in legs), default=0),
+            "carrier": carrier,
+            "depart_airport": first.get("origin", {}).get("id", ""),
+            "depart_at": first.get("departure", ""),
+            "arrive_airport": last.get("destination", {}).get("id", ""),
+            "arrive_at": last.get("arrival", ""),
+        }
+    except (KeyError, IndexError):
+        return None
 
 
 async def search_offers(
     origin_iata: str, dest_iata: str, departure_date: str, adults: int = 1, max_results: int = 5
 ) -> list[dict]:
-    """Return real flight offers from Amadeus, or [] if unavailable."""
-    token = await _get_token()
-    if not token:
+    """Return real flight offers from Flights Scraper Sky (RapidAPI), or [] if unavailable."""
+    if not settings.rapidapi_key:
         return []
 
-    url = f"{settings.amadeus_base_url}/v2/shopping/flight-offers"
+    url = f"https://{settings.rapidapi_flights_host}/flights/search-one-way"
     params = {
-        "originLocationCode": origin_iata,
-        "destinationLocationCode": dest_iata,
-        "departureDate": departure_date,
+        "fromEntityId": origin_iata,
+        "toEntityId": dest_iata,
+        "departDate": departure_date,
         "adults": adults,
-        "currencyCode": "USD",
-        "max": max_results,
+        "currency": "USD",
+        "market": "US",
+        "locale": "en-US",
     }
-    headers = {"Authorization": f"Bearer {token}"}
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.get(url, params=params, headers=headers)
+        async with httpx.AsyncClient(timeout=40.0) as client:
+            resp = await client.get(url, params=params, headers=_rapidapi_headers())
             resp.raise_for_status()
-            data = resp.json().get("data", [])
+            itineraries = resp.json().get("data", {}).get("itineraries", [])
     except Exception:
         return []
 
     offers: list[dict] = []
-    for offer in data:
-        try:
-            itinerary = offer["itineraries"][0]
-            segments = itinerary["segments"]
-            first, last = segments[0], segments[-1]
-            offers.append(
-                {
-                    "price": offer["price"]["total"],
-                    "currency": offer["price"].get("currency", "USD"),
-                    "duration": _parse_iso_duration(itinerary.get("duration", "")),
-                    "stops": len(segments) - 1,
-                    "carrier": first.get("carrierCode", ""),
-                    "depart_airport": first["departure"]["iataCode"],
-                    "depart_at": first["departure"]["at"],
-                    "arrive_airport": last["arrival"]["iataCode"],
-                    "arrive_at": last["arrival"]["at"],
-                }
-            )
-        except (KeyError, IndexError):
-            continue
+    for itinerary in sorted(itineraries, key=lambda it: it.get("price", {}).get("raw", 1e9)):
+        parsed = _parse_offer(itinerary)
+        if parsed:
+            offers.append(parsed)
+        if len(offers) >= max_results:
+            break
     return offers
+
+
+async def _fetch_calendar(
+    client: httpx.AsyncClient, origin_iata: str, dest_iata: str, depart_date: str
+) -> list[dict]:
+    """Raw daily-price list [{day, group, price}, ...] from cheapest-one-way, or []."""
+    url = f"https://{settings.rapidapi_flights_host}/flights/cheapest-one-way"
+    params = {
+        "fromEntityId": origin_iata,
+        "toEntityId": dest_iata,
+        "departDate": depart_date,
+        "currency": "USD",
+        "market": "US",
+        "locale": "en-US",
+    }
+    try:
+        resp = await client.get(url, params=params, headers=_rapidapi_headers())
+        resp.raise_for_status()
+        data = resp.json().get("data") or []
+    except Exception:
+        return []
+    return [d for d in data if isinstance(d, dict) and d.get("price") is not None]
+
+
+def _summarize_calendar(days: list[dict]) -> dict:
+    if not days:
+        return {}
+    cheapest = min(days, key=lambda d: d["price"])
+    by_day = sorted(days, key=lambda d: d.get("day", ""))
+    return {
+        "starting_price": round(cheapest["price"]),
+        "cheapest_day": cheapest.get("day", ""),
+        "currency": "USD",
+        "days": [
+            {"day": d.get("day", ""), "price": round(d["price"]), "group": d.get("group", "")}
+            for d in by_day
+        ],
+    }
+
+
+async def price_calendar(origin_iata: str, dest_iata: str, depart_date: str) -> dict:
+    """Cheapest price + per-day calendar for a route, or {} if unavailable."""
+    if not settings.rapidapi_key:
+        return {}
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        days = await _fetch_calendar(client, origin_iata, dest_iata, depart_date)
+    return _summarize_calendar(days)
+
+
+async def cheapest_prices(
+    origin_iata: str, routes: list[tuple[str, str]], depart_date: str, max_concurrency: int = 4
+) -> dict[str, dict]:
+    """Best-effort starting price + cheapest day per route.
+
+    routes: list of (destination_name, destination_iata).
+    Returns {destination_name: {starting_price, cheapest_day, currency}}.
+    """
+    if not settings.rapidapi_key or not routes:
+        return {}
+
+    sem = asyncio.Semaphore(max_concurrency)
+    result: dict[str, dict] = {}
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+
+        async def one(name: str, dest_iata: str) -> None:
+            async with sem:
+                days = await _fetch_calendar(client, origin_iata, dest_iata, depart_date)
+            summary = _summarize_calendar(days)
+            if summary:
+                result[name] = {
+                    "starting_price": summary["starting_price"],
+                    "cheapest_day": summary["cheapest_day"],
+                    "currency": summary["currency"],
+                }
+
+        await asyncio.gather(*(one(n, i) for n, i in routes), return_exceptions=True)
+
+    return result

@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
 import {
   createPlan,
+  fetchFlightCalendar,
   fetchFlyDestinations,
+  fetchFlyPrices,
   planFlyDestination,
   searchFlights,
   selectDestination,
@@ -16,11 +18,13 @@ import { MapView } from './components/MapView'
 import { useUserPrefs } from './hooks/useUserPrefs'
 import { useI18n } from './i18n'
 import type {
+  CalendarResult,
   Candidate,
   ChatMessage,
   FlightsResult,
   FlyDestination,
   Itinerary,
+  PriceSummary,
 } from './types'
 import './App.css'
 
@@ -49,9 +53,11 @@ export default function App() {
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [flyDestinations, setFlyDestinations] = useState<FlyDestination[]>([])
+  const [flyPrices, setFlyPrices] = useState<Record<string, PriceSummary>>({})
   const [flightsFor, setFlightsFor] = useState<string | null>(null)
   const [flights, setFlights] = useState<FlightsResult | null>(null)
   const [flightsLoading, setFlightsLoading] = useState(false)
+  const [calendar, setCalendar] = useState<CalendarResult | null>(null)
 
   const selected = useMemo(
     () =>
@@ -80,6 +86,8 @@ export default function App() {
       setCandidates(res.candidates)
       setFlightsFor(null)
       setFlights(null)
+      setCalendar(null)
+      setFlyPrices({})
       setMessages([
         {
           role: 'assistant',
@@ -95,6 +103,12 @@ export default function App() {
             prefs.preferences,
           )
           setFlyDestinations(fd.destinations)
+          const names = fd.destinations.map((d) => d.name)
+          if (names.length > 0) {
+            fetchFlyPrices(prefs.homeLocation, names, startDate)
+              .then((res) => setFlyPrices(res.prices))
+              .catch(() => setFlyPrices({}))
+          }
         } catch {
           setFlyDestinations([])
         }
@@ -130,12 +144,20 @@ export default function App() {
     }
   }
 
-  const handleSearchFlights = async (name: string) => {
+  const handleSearchFlights = async (name: string, date?: string) => {
+    const departDate = date ?? startDate
+    const isNewDestination = name !== flightsFor
     setFlightsFor(name)
     setFlights(null)
     setFlightsLoading(true)
+    if (isNewDestination) {
+      setCalendar(null)
+      fetchFlightCalendar(prefs.homeLocation, name, departDate)
+        .then(setCalendar)
+        .catch(() => setCalendar(null))
+    }
     try {
-      const res = await searchFlights(prefs.homeLocation, name, startDate)
+      const res = await searchFlights(prefs.homeLocation, name, departDate)
       setFlights(res)
     } catch {
       setFlights(null)
@@ -249,11 +271,13 @@ export default function App() {
           />
           <FlyDestinations
             destinations={flyDestinations}
+            prices={flyPrices}
             selectedName={itinerary?.destination ?? null}
             loading={loading}
             flightsFor={flightsFor}
             flights={flights}
             flightsLoading={flightsLoading}
+            calendar={calendar}
             onSelect={handleSelectFly}
             onSearchFlights={handleSearchFlights}
           />

@@ -11,6 +11,8 @@ from app.agents.planner import (
 from app.agents.refiner import refine
 from app.config import settings
 from app.models.schemas import (
+    CalendarRequest,
+    CalendarResponse,
     ChatRequest,
     ChatResponse,
     FlightsRequest,
@@ -19,14 +21,23 @@ from app.models.schemas import (
     FlyDestinationsRequest,
     FlyDestinationsResponse,
     FlyPlanRequest,
+    FlyPricesRequest,
+    FlyPricesResponse,
     PlanRequest,
     PlanResponse,
+    PriceSummary,
     SelectRequest,
     SelectResponse,
 )
 from app.services.airports import airport_by_iata, nearest_airport
 from app.services.destinations import DESTINATIONS
-from app.services.flights import estimate_flight, fly_candidates, search_offers
+from app.services.flights import (
+    cheapest_prices,
+    estimate_flight,
+    fly_candidates,
+    price_calendar,
+    search_offers,
+)
 from app.services.fly_destinations import FLY_DESTINATIONS
 from app.services.geocode import geocode
 
@@ -105,6 +116,40 @@ async def flights(request: FlightsRequest):
         estimate=estimate,
         offers=offers,
         has_live_data=len(offers) > 0,
+    )
+
+
+@app.post("/api/fly-prices", response_model=FlyPricesResponse)
+async def fly_prices(request: FlyPricesRequest):
+    origin_ap = nearest_airport(request.origin.lat, request.origin.lng)
+    routes: list[tuple[str, str]] = []
+    for name in request.destinations:
+        dest = next((d for d in FLY_DESTINATIONS if d.name == name), None)
+        if dest is not None:
+            routes.append((name, dest.airport))
+    prices = await cheapest_prices(origin_ap.iata, routes, request.depart_date)
+    return FlyPricesResponse(
+        origin_airport=origin_ap.iata,
+        prices={name: PriceSummary(**summary) for name, summary in prices.items()},
+    )
+
+
+@app.post("/api/flights/calendar", response_model=CalendarResponse)
+async def flights_calendar(request: CalendarRequest):
+    dest = next((d for d in FLY_DESTINATIONS if d.name == request.destination_name), None)
+    if dest is None:
+        raise HTTPException(
+            status_code=422, detail=f"Unknown fly destination: {request.destination_name}"
+        )
+    origin_ap = nearest_airport(request.origin.lat, request.origin.lng)
+    summary = await price_calendar(origin_ap.iata, dest.airport, request.depart_date)
+    return CalendarResponse(
+        origin_airport=origin_ap.iata,
+        arrival_airport=dest.airport,
+        currency=summary.get("currency", "USD"),
+        starting_price=summary.get("starting_price"),
+        cheapest_day=summary.get("cheapest_day"),
+        days=summary.get("days", []),
     )
 
 

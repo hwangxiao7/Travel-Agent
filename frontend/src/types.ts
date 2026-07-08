@@ -90,6 +90,32 @@ export interface FlightsResult {
   has_live_data: boolean
 }
 
+export interface PriceSummary {
+  starting_price: number
+  cheapest_day: string
+  currency: string
+}
+
+export interface FlyPricesResult {
+  origin_airport: string
+  prices: Record<string, PriceSummary>
+}
+
+export interface CalendarDay {
+  day: string
+  price: number
+  group: string
+}
+
+export interface CalendarResult {
+  origin_airport: string
+  arrival_airport: string
+  currency: string
+  starting_price: number | null
+  cheapest_day: string | null
+  days: CalendarDay[]
+}
+
 export interface Candidate {
   name: string
   lat: number

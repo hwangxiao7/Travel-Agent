@@ -1,13 +1,43 @@
 import type {
+  CalendarResult,
   ChatMessage,
   FlightsResult,
   FlyDestination,
+  FlyPricesResult,
   Itinerary,
   Location,
   PlanRequest,
   PlanResponse,
   Preference,
 } from '../types'
+
+export async function fetchFlyPrices(
+  origin: Location,
+  destinations: string[],
+  departDate: string,
+): Promise<FlyPricesResult> {
+  const res = await fetch('/api/fly-prices', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ origin, destinations, depart_date: departDate }),
+  })
+  if (!res.ok) throw new Error('Failed to load fly prices')
+  return res.json()
+}
+
+export async function fetchFlightCalendar(
+  origin: Location,
+  destinationName: string,
+  departDate: string,
+): Promise<CalendarResult> {
+  const res = await fetch('/api/flights/calendar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ origin, destination_name: destinationName, depart_date: departDate }),
+  })
+  if (!res.ok) throw new Error('Failed to load flight calendar')
+  return res.json()
+}
 
 export async function fetchFlyDestinations(
   origin: Location,
