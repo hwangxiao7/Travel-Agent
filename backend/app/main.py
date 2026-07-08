@@ -7,6 +7,7 @@ from app.agents.planner import (
     create_plan,
     plan_for_destination,
     plan_for_fly_destination,
+    search_destinations,
 )
 from app.agents.refiner import refine
 from app.config import settings
@@ -26,6 +27,8 @@ from app.models.schemas import (
     PlanRequest,
     PlanResponse,
     PriceSummary,
+    SearchRequest,
+    SearchResponse,
     SelectRequest,
     SelectResponse,
 )
@@ -69,6 +72,15 @@ async def plan_trip(request: PlanRequest):
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return PlanResponse(itinerary=itinerary, candidates=candidates)
+
+
+@app.post("/api/search", response_model=SearchResponse)
+async def search(request: SearchRequest):
+    try:
+        itinerary, candidates, semantic = await search_destinations(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return SearchResponse(itinerary=itinerary, candidates=candidates, semantic=semantic)
 
 
 @app.post("/api/select", response_model=SelectResponse)

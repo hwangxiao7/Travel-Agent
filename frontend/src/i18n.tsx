@@ -30,6 +30,9 @@ const TRANSLATIONS: Record<Lang, Dict> = {
     'panel.preferences': 'Preferences',
     'panel.generate': 'Generate plan',
     'panel.planning': 'Planning…',
+    'panel.search': 'Describe your ideal trip (AI search)',
+    'panel.searchPlaceholder': 'e.g. quiet waterfalls and forest, good coffee nearby',
+    'panel.searchBtn': '✨ Find with AI',
 
     'pref.national-park': 'National Park',
     'pref.hiking': 'Hiking',
@@ -113,6 +116,9 @@ const TRANSLATIONS: Record<Lang, Dict> = {
     'panel.preferences': '偏好',
     'panel.generate': '生成计划',
     'panel.planning': '规划中…',
+    'panel.search': '用一句话描述你想要的旅行（AI 搜索）',
+    'panel.searchPlaceholder': '例如：安静的瀑布和森林，附近咖啡好喝',
+    'panel.searchBtn': '✨ 用 AI 查找',
 
     'pref.national-park': '国家公园',
     'pref.hiking': '徒步',

@@ -26,7 +26,12 @@ async def fetch_weather_note(lat: float, lng: float, lang: str = "en") -> str:
         return tr("weather_unavailable", lang)
 
 
-async def generate_summary(prompt: str) -> str:
+async def generate_summary(prompt: str, json_mode: bool = False) -> str:
+    """Generate text from the configured LLM.
+
+    When json_mode is True and the provider supports it, the model is constrained
+    to emit a valid JSON object (grammar-constrained decoding) — important for
+    small local models that otherwise produce malformed JSON."""
     provider = settings.llm_provider.lower()
 
     if provider == "template":
@@ -38,7 +43,7 @@ async def generate_summary(prompt: str) -> str:
         client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
         msg = await client.messages.create(
             model=settings.anthropic_model,
-            max_tokens=400,
+            max_tokens=800 if json_mode else 400,
             messages=[{"role": "user", "content": prompt}],
         )
         block = msg.content[0]
@@ -51,10 +56,14 @@ async def generate_summary(prompt: str) -> str:
         if settings.openai_base_url:
             client_kwargs["base_url"] = settings.openai_base_url
         client = AsyncOpenAI(**client_kwargs)
+        extra: dict = {}
+        if json_mode:
+            extra["response_format"] = {"type": "json_object"}
         resp = await client.chat.completions.create(
             model=settings.openai_model,
-            max_tokens=400,
+            max_tokens=800 if json_mode else 400,
             messages=[{"role": "user", "content": prompt}],
+            **extra,
         )
         return resp.choices[0].message.content or ""
 

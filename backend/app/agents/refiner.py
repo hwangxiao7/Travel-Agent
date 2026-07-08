@@ -15,6 +15,7 @@ from app.services.destinations import DESTINATIONS
 from app.services.geo import estimate_drive_hours, format_duration, haversine_miles
 from app.services.i18n import lang_name, tr
 from app.services.llm import fetch_weather_note, generate_summary
+from app.services.retrieval import retriever
 
 Intent = str
 
@@ -293,12 +294,17 @@ async def refine(req: ChatRequest) -> ChatResponse:
     if intent == "family":
         return await _family(req, it)
 
-    # No rule matched — use the user's own LLM if configured, else explain capabilities.
+    # No rule matched — RAG: retrieve relevant destinations, then let the LLM answer
+    # grounded in those facts (falls back to a capabilities message with no LLM key).
+    retrieved = await retriever.retrieve(text, k=3)
+    knowledge = "\n".join(f"- {doc.text}" for doc, _ in retrieved) or "- (no matches)"
     ctx = f"Current plan: {it.destination}, {it.drive_time} drive. {it.summary}"
     history = "\n".join(f"{m.role}: {m.content}" for m in req.messages[-6:])
     prompt = (
-        "You are a spontaneous North America travel assistant. Be concise and actionable.\n"
-        f"{ctx}\n\nConversation:\n{history}\n\nReply to the latest user message.\n"
+        "You are a spontaneous North America travel assistant. Be concise and actionable. "
+        "Ground your answer in the retrieved destination facts; do not invent places.\n"
+        f"{ctx}\n\nRetrieved destination facts:\n{knowledge}\n\n"
+        f"Conversation:\n{history}\n\nReply to the latest user message.\n"
         f"Respond in {lang_name(lang)}. Keep place names in English."
     )
     reply = await generate_summary(prompt)

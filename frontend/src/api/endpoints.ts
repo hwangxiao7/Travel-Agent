@@ -6,6 +6,7 @@ export const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 export const ENDPOINTS = {
   geocode: '/api/geocode',
   plan: '/api/plan',
+  search: '/api/search',
   select: '/api/select',
   chat: '/api/chat',
   flyDestinations: '/api/fly-destinations',

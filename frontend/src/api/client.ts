@@ -99,6 +99,25 @@ export async function createPlan(body: PlanRequest): Promise<PlanResponse> {
   return postJson('plan', body, 'Failed to generate plan')
 }
 
+export interface SearchRequest {
+  origin: Location
+  query: string
+  trip_type: 'day-trip' | 'weekend'
+  start_date: string
+  end_date?: string | null
+  max_drive_hours: number
+  max_flight_hours: number
+  preferences: Preference[]
+  allow_flight: boolean
+  language: string
+}
+
+export async function searchPlan(
+  body: SearchRequest,
+): Promise<PlanResponse & { semantic: boolean }> {
+  return postJson('search', body, 'Search failed')
+}
+
 export async function sendChat(
   messages: ChatMessage[],
   currentItinerary: Itinerary | null,

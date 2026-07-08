@@ -86,6 +86,25 @@ class PlanResponse(BaseModel):
     candidates: list[dict]
 
 
+class SearchRequest(BaseModel):
+    origin: Location
+    query: str
+    trip_type: Literal["day-trip", "weekend"] = "day-trip"
+    start_date: str
+    end_date: str | None = None
+    max_drive_hours: float = Field(default=3.0, ge=0.5, le=12.0)
+    max_flight_hours: float = Field(default=4.0, ge=0.5, le=12.0)
+    preferences: list[Preference] = Field(default_factory=list)
+    allow_flight: bool = False
+    language: str = "en"
+
+
+class SearchResponse(BaseModel):
+    itinerary: Itinerary
+    candidates: list[dict]
+    semantic: bool = False  # True when embedding-based retrieval was used
+
+
 class SelectRequest(BaseModel):
     origin: Location
     destination_name: str

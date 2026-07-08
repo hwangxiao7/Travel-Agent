@@ -20,6 +20,8 @@ interface Props {
   onAllowFlightChange: (v: boolean) => void
   loading: boolean
   onGenerate: () => void
+  searchQuery: string
+  onSearchQueryChange: (v: string) => void
 }
 
 export function ConstraintPanel({
@@ -37,6 +39,8 @@ export function ConstraintPanel({
   onAllowFlightChange,
   loading,
   onGenerate,
+  searchQuery,
+  onSearchQueryChange,
 }: Props) {
   const { t } = useI18n()
   const [locating, setLocating] = useState(false)
@@ -148,16 +152,14 @@ export function ConstraintPanel({
         />
       </label>
 
-      {tripType === 'weekend' && (
-        <label className="checkbox">
-          <input
-            type="checkbox"
-            checked={allowFlight}
-            onChange={(e) => onAllowFlightChange(e.target.checked)}
-          />
-          {t('panel.includeFlight')}
-        </label>
-      )}
+      <label className="checkbox">
+        <input
+          type="checkbox"
+          checked={allowFlight}
+          onChange={(e) => onAllowFlightChange(e.target.checked)}
+        />
+        {t('panel.includeFlight')}
+      </label>
 
       <div className="field">
         <span>{t('panel.preferences')}</span>
@@ -175,8 +177,26 @@ export function ConstraintPanel({
         </div>
       </div>
 
+      <div className="field search-field">
+        <span>{t('panel.search')}</span>
+        <textarea
+          className="search-input"
+          rows={2}
+          placeholder={t('panel.searchPlaceholder')}
+          value={searchQuery}
+          onChange={(e) => onSearchQueryChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) onGenerate()
+          }}
+        />
+      </div>
+
       <button type="button" className="primary" disabled={loading} onClick={onGenerate}>
-        {loading ? t('panel.planning') : t('panel.generate')}
+        {loading
+          ? t('panel.planning')
+          : searchQuery.trim()
+            ? t('panel.searchBtn')
+            : t('panel.generate')}
       </button>
     </div>
   )

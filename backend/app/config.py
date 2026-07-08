@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_base_url: str = ""  # custom endpoint (e.g. Ark); blank = api.openai.com
     openai_model: str = "gpt-4o-mini"
+    openai_embed_model: str = "text-embedding-3-small"  # RAG semantic retrieval
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-3-5-haiku-20241022"
     mapbox_token: str = ""

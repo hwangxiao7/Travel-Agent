@@ -2,13 +2,16 @@ import { useEffect, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useI18n } from '../i18n'
-import type { Candidate, Location } from '../types'
+import type { Candidate, FlyDestination, Location, Place } from '../types'
 
 interface Props {
   origin: Location
   candidates: Candidate[]
   selected?: { lat: number; lng: number; name: string } | null
   onSelect?: (name: string) => void
+  food?: Place[]
+  fun?: Place[]
+  flyDestinations?: FlyDestination[]
 }
 
 function pin(color: string, label: string): L.DivIcon {
@@ -21,7 +24,29 @@ function pin(color: string, label: string): L.DivIcon {
   })
 }
 
-export function MapView({ origin, candidates, selected, onSelect }: Props) {
+function dot(color: string): L.DivIcon {
+  return L.divIcon({
+    className: 'map-dot',
+    html: `<span class="poi-dot" style="background:${color}"></span>`,
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+    popupAnchor: [0, -8],
+  })
+}
+
+const FOOD_COLOR = '#e11d48'
+const FUN_COLOR = '#7c3aed'
+const FLY_COLOR = '#0891b2'
+
+export function MapView({
+  origin,
+  candidates,
+  selected,
+  onSelect,
+  food = [],
+  fun = [],
+  flyDestinations = [],
+}: Props) {
   const { t } = useI18n()
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
@@ -74,16 +99,46 @@ export function MapView({ origin, candidates, selected, onSelect }: Props) {
       marker.on('click', () => onSelectRef.current?.(c.name))
     })
 
+    flyDestinations.forEach((f) => {
+      L.marker([f.lat, f.lng], { icon: pin(FLY_COLOR, '✈') })
+        .bindPopup(`<strong>${f.name}</strong><br/>${f.flight_time} ${t('itin.flight')}<br/><em>${f.highlight}</em>`)
+        .addTo(layer)
+    })
+
+    food.forEach((p) => {
+      L.marker([p.lat, p.lng], { icon: dot(FOOD_COLOR) })
+        .bindPopup(`🍴 <strong>${p.name}</strong>${p.note ? `<br/>${p.note}` : ''}`)
+        .addTo(layer)
+    })
+    fun.forEach((p) => {
+      L.marker([p.lat, p.lng], { icon: dot(FUN_COLOR) })
+        .bindPopup(`📸 <strong>${p.name}</strong>${p.recommended ? `<br/>★ ${t('place.top')}` : ''}`)
+        .addTo(layer)
+    })
+
     const points: L.LatLngExpression[] = [
       [origin.lat, origin.lng],
       ...candidates.map((c) => [c.lat, c.lng] as L.LatLngExpression),
+      ...flyDestinations.map((f) => [f.lat, f.lng] as L.LatLngExpression),
     ]
     if (points.length > 1) {
       map.fitBounds(L.latLngBounds(points), { padding: [40, 40], maxZoom: 10 })
     } else {
       map.setView([origin.lat, origin.lng], 9)
     }
-  }, [origin, candidates, selected, t])
+  }, [origin, candidates, selected, food, fun, flyDestinations, t])
 
-  return <div ref={containerRef} className="map-container" />
+  return (
+    <div className="map-wrap">
+      <div ref={containerRef} className="map-container" />
+      <div className="map-legend">
+        <span><i className="lg" style={{ background: '#ea580c' }} />{t('map.recommended')}</span>
+        <span><i className="lg" style={{ background: FOOD_COLOR }} />{t('itin.food')}</span>
+        <span><i className="lg" style={{ background: FUN_COLOR }} />{t('itin.fun')}</span>
+        {flyDestinations.length > 0 && (
+          <span><i className="lg" style={{ background: FLY_COLOR }} />{t('fly.title')}</span>
+        )}
+      </div>
+    </div>
+  )
 }

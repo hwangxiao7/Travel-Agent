@@ -6,6 +6,7 @@ import {
   fetchFlyPrices,
   planFlyDestination,
   searchFlights,
+  searchPlan,
   selectDestination,
   sendChat,
 } from './api/client'
@@ -58,6 +59,7 @@ export default function App() {
   const [flights, setFlights] = useState<FlightsResult | null>(null)
   const [flightsLoading, setFlightsLoading] = useState(false)
   const [calendar, setCalendar] = useState<CalendarResult | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
 
   const selected = useMemo(
     () =>
@@ -67,11 +69,47 @@ export default function App() {
     [itinerary],
   )
 
-  const handleGenerate = async () => {
+  // Shared: load fly-to destinations + prices whenever flights are allowed.
+  const loadFlyDestinations = async () => {
+    if (!allowFlight) {
+      setFlyDestinations([])
+      return
+    }
+    try {
+      const fd = await fetchFlyDestinations(
+        prefs.homeLocation,
+        prefs.defaultMaxFlightHours,
+        prefs.preferences,
+      )
+      setFlyDestinations(fd.destinations)
+      const names = fd.destinations.map((d) => d.name)
+      if (names.length > 0) {
+        fetchFlyPrices(prefs.homeLocation, names, startDate)
+          .then((res) => setFlyPrices(res.prices))
+          .catch(() => setFlyPrices({}))
+      }
+    } catch {
+      setFlyDestinations([])
+    }
+  }
+
+  const resetTripState = (itin: Itinerary) => {
+    setItinerary(itin)
+    setFlightsFor(null)
+    setFlights(null)
+    setCalendar(null)
+    setFlyPrices({})
+    setMessages([{ role: 'assistant', content: itin.summary }])
+  }
+
+  // Single planning entry point: free-text query → AI search, otherwise the
+  // constraint/preference-based plan. Both honor the flight toggle.
+  const handlePlan = async () => {
     setLoading(true)
     setError(null)
     try {
-      const res = await createPlan({
+      const useSearch = searchQuery.trim().length > 0
+      const body = {
         origin: prefs.homeLocation,
         trip_type: tripType,
         start_date: startDate,
@@ -81,40 +119,13 @@ export default function App() {
         preferences: prefs.preferences,
         allow_flight: allowFlight,
         language: lang,
-      })
-      setItinerary(res.itinerary)
-      setCandidates(res.candidates)
-      setFlightsFor(null)
-      setFlights(null)
-      setCalendar(null)
-      setFlyPrices({})
-      setMessages([
-        {
-          role: 'assistant',
-          content: res.itinerary.summary,
-        },
-      ])
-
-      if (tripType === 'weekend' && allowFlight) {
-        try {
-          const fd = await fetchFlyDestinations(
-            prefs.homeLocation,
-            prefs.defaultMaxFlightHours,
-            prefs.preferences,
-          )
-          setFlyDestinations(fd.destinations)
-          const names = fd.destinations.map((d) => d.name)
-          if (names.length > 0) {
-            fetchFlyPrices(prefs.homeLocation, names, startDate)
-              .then((res) => setFlyPrices(res.prices))
-              .catch(() => setFlyPrices({}))
-          }
-        } catch {
-          setFlyDestinations([])
-        }
-      } else {
-        setFlyDestinations([])
       }
+      const res = useSearch
+        ? await searchPlan({ ...body, query: searchQuery })
+        : await createPlan(body)
+      resetTripState(res.itinerary)
+      setCandidates(res.candidates)
+      await loadFlyDestinations()
     } catch (e) {
       setError(e instanceof Error ? e.message : t('app.error'))
     } finally {
@@ -246,7 +257,9 @@ export default function App() {
             allowFlight={allowFlight}
             onAllowFlightChange={setAllowFlight}
             loading={loading}
-            onGenerate={handleGenerate}
+            onGenerate={handlePlan}
+            searchQuery={searchQuery}
+            onSearchQueryChange={setSearchQuery}
           />
           <ChatPanel
             messages={messages}
@@ -262,6 +275,9 @@ export default function App() {
             candidates={candidates}
             selected={selected}
             onSelect={handleSelectCandidate}
+            food={itinerary?.nearby_food ?? []}
+            fun={itinerary?.nearby_fun ?? []}
+            flyDestinations={flyDestinations}
           />
           <CandidateList
             candidates={candidates}
