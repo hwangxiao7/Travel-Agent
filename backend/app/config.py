@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-3-5-haiku-20241022"
     mapbox_token: str = ""
     openweather_api_key: str = ""
+    ticketmaster_api_key: str = ""
     rapidapi_key: str = ""
     rapidapi_flights_host: str = "flights-sky.p.rapidapi.com"
     cors_origins: str = "http://localhost:5173"

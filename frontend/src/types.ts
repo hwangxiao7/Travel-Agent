@@ -42,6 +42,24 @@ export interface DayPlan {
   activities: Activity[]
 }
 
+export interface Place {
+  name: string
+  category: string
+  kind: 'food' | 'fun'
+  lat: number
+  lng: number
+  note: string
+  recommended: boolean
+}
+
+export interface EventItem {
+  name: string
+  date: string
+  venue: string
+  category: string
+  url: string
+}
+
 export interface Itinerary {
   destination: string
   destination_lat: number
@@ -56,6 +74,9 @@ export interface Itinerary {
   travel_mode: 'drive' | 'fly'
   origin_airport: string
   destination_airport: string
+  nearby_food: Place[]
+  nearby_fun: Place[]
+  events: EventItem[]
 }
 
 export interface FlyDestination {

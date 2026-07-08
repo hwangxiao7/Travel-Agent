@@ -44,6 +44,24 @@ class DayPlan(BaseModel):
     activities: list[Activity]
 
 
+class Place(BaseModel):
+    name: str
+    category: str = ""  # machine key: restaurant/cafe/bar/museum/viewpoint/park/attraction...
+    kind: Literal["food", "fun"] = "fun"
+    lat: float
+    lng: float
+    note: str = ""  # cuisine or short descriptor
+    recommended: bool = False  # notable (has wikidata/wikipedia tag)
+
+
+class Event(BaseModel):
+    name: str
+    date: str = ""
+    venue: str = ""
+    category: str = ""
+    url: str = ""
+
+
 class Itinerary(BaseModel):
     destination: str
     destination_lat: float
@@ -58,6 +76,9 @@ class Itinerary(BaseModel):
     travel_mode: Literal["drive", "fly"] = "drive"
     origin_airport: str = ""
     destination_airport: str = ""
+    nearby_food: list[Place] = Field(default_factory=list)
+    nearby_fun: list[Place] = Field(default_factory=list)
+    events: list[Event] = Field(default_factory=list)
 
 
 class PlanResponse(BaseModel):

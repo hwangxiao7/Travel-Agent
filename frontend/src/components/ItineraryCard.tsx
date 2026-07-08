@@ -1,12 +1,80 @@
 import { useI18n } from '../i18n'
-import type { Itinerary } from '../types'
+import type { EventItem, Itinerary, Place } from '../types'
 
 interface Props {
   itinerary: Itinerary | null
 }
 
+const CATEGORY_ICON: Record<string, string> = {
+  restaurant: '🍽️',
+  cafe: '☕',
+  fast_food: '🍔',
+  bar: '🍸',
+  ice_cream: '🍦',
+  museum: '🏛️',
+  viewpoint: '🌄',
+  attraction: '📸',
+  artwork: '🎨',
+  gallery: '🖼️',
+  theme_park: '🎢',
+  zoo: '🦁',
+  aquarium: '🐠',
+  park: '🌳',
+}
+
 export function ItineraryCard({ itinerary }: Props) {
   const { t } = useI18n()
+
+  const catLabel = (c: string) => t(`place.${c}`)
+
+  const renderPlaces = (places: Place[], title: string) =>
+    places.length > 0 && (
+      <section>
+        <h3>{title}</h3>
+        <ul className="places">
+          {places.map((p) => (
+            <li key={`${p.kind}-${p.name}-${p.lat}`} className="place-item">
+              <span className="place-icon">{CATEGORY_ICON[p.category] ?? '📍'}</span>
+              <div>
+                <strong>{p.name}</strong>
+                {p.recommended && <span className="place-badge">{t('place.top')}</span>}
+                <span className="place-cat">
+                  {catLabel(p.category)}
+                  {p.note ? ` · ${p.note}` : ''}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+
+  const renderEvents = (events: EventItem[]) =>
+    events.length > 0 && (
+      <section>
+        <h3>{t('itin.events')}</h3>
+        <ul className="events">
+          {events.map((e) => (
+            <li key={`${e.name}-${e.date}`} className="event-item">
+              <div>
+                <strong>
+                  {e.url ? (
+                    <a href={e.url} target="_blank" rel="noreferrer">
+                      {e.name}
+                    </a>
+                  ) : (
+                    e.name
+                  )}
+                </strong>
+                <span className="event-meta">
+                  {[e.date, e.venue, e.category].filter(Boolean).join(' · ')}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
 
   if (!itinerary) {
     return (
@@ -46,6 +114,10 @@ export function ItineraryCard({ itinerary }: Props) {
           </ol>
         </section>
       ))}
+
+      {renderEvents(itinerary.events)}
+      {renderPlaces(itinerary.nearby_food, t('itin.food'))}
+      {renderPlaces(itinerary.nearby_fun, t('itin.fun'))}
 
       {itinerary.alternatives.length > 0 && (
         <section>

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import date, timedelta
 
 from app.models.schemas import (
     Activity,
     DayPlan,
+    Event,
     FlyPlanRequest,
     Itinerary,
+    Place,
     PlanRequest,
     Preference,
     SelectRequest,
@@ -14,11 +17,13 @@ from app.models.schemas import (
 from app.services.airports import airport_by_iata, nearest_airport
 from app.services.constraint_engine import ScoredDestination, find_candidates
 from app.services.destinations import DESTINATIONS
+from app.services.events import fetch_events
 from app.services.fly_destinations import FLY_DESTINATIONS
 from app.services.flights import estimate_flight
 from app.services.geo import estimate_drive_hours, format_duration, haversine_miles
 from app.services.i18n import lang_name, pack, tr
 from app.services.llm import fetch_weather_note, generate_summary
+from app.services.places import fetch_nearby_places
 
 
 def _packing_tips(prefs: list[Preference], trip_type: str, lang: str) -> list[str]:
@@ -41,12 +46,28 @@ def _activities_from_dest(scored: ScoredDestination, day_index: int) -> list[Act
     return [Activity(time=t, place=p, duration=d, note=n) for t, p, d, n in rows]
 
 
+async def _local_highlights(
+    lat: float, lng: float, start_date: str
+) -> tuple[list[Place], list[Place], list[Event]]:
+    """Fetch nearby food + fun (OSM) and events (Ticketmaster) concurrently.
+
+    Each source is best-effort and degrades to empty on failure/no key."""
+    (food, fun), events = await asyncio.gather(
+        fetch_nearby_places(lat, lng),
+        fetch_events(lat, lng, start_date),
+    )
+    return food, fun, events
+
+
 def _build_itinerary(
     request: PlanRequest,
     scored: ScoredDestination,
     alternatives: list[str],
     weather_note: str,
     summary: str,
+    nearby_food: list[Place] | None = None,
+    nearby_fun: list[Place] | None = None,
+    events: list[Event] | None = None,
 ) -> Itinerary:
     start = date.fromisoformat(request.start_date)
     days: list[DayPlan] = []
@@ -72,6 +93,9 @@ def _build_itinerary(
         packing_tips=_packing_tips(request.preferences, request.trip_type, request.language),
         weather_note=weather_note,
         summary=summary,
+        nearby_food=nearby_food or [],
+        nearby_fun=nearby_fun or [],
+        events=events or [],
     )
 
 
@@ -84,7 +108,10 @@ async def create_plan(request: PlanRequest) -> tuple[Itinerary, list[dict]]:
 
     top = candidates[0]
     alts = [c.destination.name for c in candidates[1:3]]
-    weather = await fetch_weather_note(top.destination.lat, top.destination.lng, request.language)
+    weather, (food, fun, events) = await asyncio.gather(
+        fetch_weather_note(top.destination.lat, top.destination.lng, request.language),
+        _local_highlights(top.destination.lat, top.destination.lng, request.start_date),
+    )
 
     summary_prompt = (
         f"Write 2-3 sentences for a spontaneous trip plan.\n"
@@ -107,7 +134,7 @@ async def create_plan(request: PlanRequest) -> tuple[Itinerary, list[dict]]:
             time=top.drive_time,
         )
 
-    itinerary = _build_itinerary(request, top, alts, weather, summary)
+    itinerary = _build_itinerary(request, top, alts, weather, summary, food, fun, events)
     candidate_payload = [
         {
             "name": c.destination.name,
@@ -150,7 +177,10 @@ async def plan_for_destination(req: SelectRequest) -> Itinerary:
         language=req.language,
     )
     alts = [c.destination.name for c in find_candidates(plan_req, limit=4) if c.destination.name != dest.name][:2]
-    weather = await fetch_weather_note(dest.lat, dest.lng, req.language)
+    weather, (food, fun, events) = await asyncio.gather(
+        fetch_weather_note(dest.lat, dest.lng, req.language),
+        _local_highlights(dest.lat, dest.lng, req.start_date),
+    )
 
     summary_prompt = (
         f"Write 2-3 sentences for a spontaneous trip plan.\n"
@@ -172,7 +202,7 @@ async def plan_for_destination(req: SelectRequest) -> Itinerary:
             time=scored.drive_time,
         )
 
-    return _build_itinerary(plan_req, scored, alts, weather, summary)
+    return _build_itinerary(plan_req, scored, alts, weather, summary, food, fun, events)
 
 
 async def plan_for_fly_destination(req: FlyPlanRequest) -> Itinerary:
@@ -203,7 +233,10 @@ async def plan_for_fly_destination(req: FlyPlanRequest) -> Itinerary:
         allow_flight=True,
         language=req.language,
     )
-    weather = await fetch_weather_note(dest.lat, dest.lng, req.language)
+    weather, (food, fun, events) = await asyncio.gather(
+        fetch_weather_note(dest.lat, dest.lng, req.language),
+        _local_highlights(dest.lat, dest.lng, req.start_date),
+    )
 
     summary_prompt = (
         f"Write 2-3 sentences for a spontaneous fly-away trip plan.\n"
@@ -225,7 +258,7 @@ async def plan_for_fly_destination(req: FlyPlanRequest) -> Itinerary:
             airport=origin_ap.iata,
         )
 
-    itinerary = _build_itinerary(plan_req, scored, [], weather, summary)
+    itinerary = _build_itinerary(plan_req, scored, [], weather, summary, food, fun, events)
     return itinerary.model_copy(
         update={
             "travel_mode": "fly",
