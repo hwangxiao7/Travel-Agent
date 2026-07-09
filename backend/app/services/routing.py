@@ -18,6 +18,8 @@ async def drive_durations_hours(
     request. Returns a list aligned with `coords` (None for any unroutable
     point), or None if the whole lookup fails so callers fall back to the
     haversine estimate."""
+    from app.observability import atraced, external_api_latency_ms, record_external_failure
+
     if not coords:
         return []
 
@@ -26,21 +28,29 @@ async def drive_durations_hours(
     path = ";".join(points)
     params = {"sources": "0", "annotations": "duration"}
 
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(OSRM_TABLE_URL + path, params=params)
-            resp.raise_for_status()
-            data = resp.json()
-        if data.get("code") != "Ok":
+    async with atraced(
+        "routing.OSRM call",
+        attributes={"osrm.destinations": len(coords)},
+        latency_metric=external_api_latency_ms,
+        latency_labels={"api": "osrm"},
+    ):
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(OSRM_TABLE_URL + path, params=params)
+                resp.raise_for_status()
+                data = resp.json()
+            if data.get("code") != "Ok":
+                record_external_failure("osrm")
+                return None
+            row = data["durations"][0]  # origin -> each point (seconds), incl. self at [0]
+        except Exception:
+            record_external_failure("osrm")
             return None
-        row = data["durations"][0]  # origin -> each point (seconds), incl. self at [0]
-    except Exception:
-        return None
 
-    out: list[float | None] = []
-    for secs in row[1:]:  # skip origin->origin
-        out.append(round(secs / 3600.0, 2) if isinstance(secs, (int, float)) else None)
-    return out
+        out: list[float | None] = []
+        for secs in row[1:]:  # skip origin->origin
+            out.append(round(secs / 3600.0, 2) if isinstance(secs, (int, float)) else None)
+        return out
 
 
 async def drive_duration_hours(

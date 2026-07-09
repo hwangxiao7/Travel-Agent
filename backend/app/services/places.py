@@ -153,37 +153,46 @@ async def fetch_nearby_places(
 
     Best-effort: any failure returns empty lists so planning never blocks on it.
     """
+    from app.observability import atraced, external_api_latency_ms, record_external_failure
+
     query = _build_query(lat, lng, radius_m, cap=limit_each * 10)
-    try:
-        async with httpx.AsyncClient(timeout=18.0, headers=_HEADERS) as client:
-            resp = await client.post(OVERPASS_URL, data={"data": query})
-            resp.raise_for_status()
-            elements = resp.json().get("elements", [])
-    except Exception:
-        return [], []
+    async with atraced(
+        "places.Overpass call",
+        attributes={"overpass.radius_m": radius_m},
+        latency_metric=external_api_latency_ms,
+        latency_labels={"api": "overpass"},
+    ):
+        try:
+            async with httpx.AsyncClient(timeout=18.0, headers=_HEADERS) as client:
+                resp = await client.post(OVERPASS_URL, data={"data": query})
+                resp.raise_for_status()
+                elements = resp.json().get("elements", [])
+        except Exception:
+            record_external_failure("overpass")
+            return [], []
 
-    food: list[Place] = []
-    fun: list[Place] = []
-    seen: set[str] = set()
-    for el in elements:
-        place = _to_place(el)
-        if place is None:
-            continue
-        key = f"{place.kind}:{place.name.strip().lower()}"
-        if key in seen:
-            continue
-        seen.add(key)
-        (food if place.kind == "food" else fun).append(place)
+        food: list[Place] = []
+        fun: list[Place] = []
+        seen: set[str] = set()
+        for el in elements:
+            place = _to_place(el)
+            if place is None:
+                continue
+            key = f"{place.kind}:{place.name.strip().lower()}"
+            if key in seen:
+                continue
+            seen.add(key)
+            (food if place.kind == "food" else fun).append(place)
 
-    def _dist(p: Place) -> float:
-        return haversine_miles(lat, lng, p.lat, p.lng)
+        def _dist(p: Place) -> float:
+            return haversine_miles(lat, lng, p.lat, p.lng)
 
-    # Food: notable first, then nearest.
-    food.sort(key=lambda p: (not p.recommended, _dist(p)))
-    # Fun: notable first, then nearest — but diversify categories so niche spots
-    # (historic, indie shops, markets, walks) surface instead of six parks.
-    fun.sort(key=lambda p: (not p.recommended, _dist(p)))
-    return _diversify(food, limit_each), _diversify(fun, limit_each)
+        # Food: notable first, then nearest.
+        food.sort(key=lambda p: (not p.recommended, _dist(p)))
+        # Fun: notable first, then nearest — but diversify categories so niche spots
+        # (historic, indie shops, markets, walks) surface instead of six parks.
+        fun.sort(key=lambda p: (not p.recommended, _dist(p)))
+        return _diversify(food, limit_each), _diversify(fun, limit_each)
 
 
 def _diversify(places: list[Place], limit: int, max_per_cat: int = 2) -> list[Place]:

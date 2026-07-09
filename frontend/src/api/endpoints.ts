@@ -14,6 +14,13 @@ export const ENDPOINTS = {
   flyPlan: '/api/fly-plan',
   flights: '/api/flights',
   flightsCalendar: '/api/flights/calendar',
+  authRegister: '/api/auth/register',
+  authLogin: '/api/auth/login',
+  authMe: '/api/auth/me',
+  trips: '/api/trips',
+  tripsList: '/api/trips',
+  reviews: '/api/reviews',
+  placeReviews: '/api/places', // append /{name}/reviews in client
 } as const
 
 export type EndpointKey = keyof typeof ENDPOINTS

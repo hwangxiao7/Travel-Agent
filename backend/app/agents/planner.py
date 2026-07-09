@@ -88,6 +88,7 @@ async def _apply_grounding(
     food: list[Place],
     fun: list[Place],
     events: list[Event],
+    profile_note: str = "",
 ) -> Itinerary:
     """RAG step: replace catalog activities with LLM-generated, grounded ones.
 
@@ -104,6 +105,7 @@ async def _apply_grounding(
         weather_note=itinerary.weather_note,
         preferences=[p.value for p in request.preferences],
         language=request.language,
+        profile_note=profile_note,
     )
     if grounded:
         return itinerary.model_copy(update={"days": grounded})
@@ -150,59 +152,97 @@ def _build_itinerary(
     )
 
 
-async def create_plan(request: PlanRequest) -> tuple[Itinerary, list[dict]]:
-    candidates = find_candidates(request)
-    if not candidates:
-        raise ValueError(
-            "No destinations match your drive-time limit. Try increasing max drive hours or broadening preferences."
+async def create_plan(
+    request: PlanRequest, user=None
+) -> tuple[Itinerary, list[dict]]:
+    from app.observability import atraced
+
+    async with atraced("planner.create_plan"):
+        candidates = find_candidates(request)
+        if not candidates:
+            raise ValueError(
+                "No destinations match your drive-time limit. Try increasing max drive hours or broadening preferences."
+            )
+
+        # Personalize ranking when a logged-in user is present.
+        if user is not None:
+            from app.db import SessionLocal, get_engine
+            from app.services.personalization import personalization_boost
+
+            get_engine()
+            assert SessionLocal is not None
+            db = SessionLocal()
+            try:
+                for c in candidates:
+                    c.score += personalization_boost(db, user, c.destination.name)
+                candidates.sort(key=lambda c: c.score, reverse=True)
+            finally:
+                db.close()
+
+        await _refine_drive_times(request.origin, candidates)
+        top = candidates[0]
+        alts = [c.destination.name for c in candidates[1:3]]
+        weather, (food, fun, events), (guides, viral) = await asyncio.gather(
+            fetch_weather_note(top.destination.lat, top.destination.lng, request.language),
+            _local_highlights(top.destination.lat, top.destination.lng, request.start_date),
+            social_highlights(
+                top.destination.name, top.destination.lat, top.destination.lng, request.language
+            ),
         )
 
-    await _refine_drive_times(request.origin, candidates)
-    top = candidates[0]
-    alts = [c.destination.name for c in candidates[1:3]]
-    weather, (food, fun, events), (guides, viral) = await asyncio.gather(
-        fetch_weather_note(top.destination.lat, top.destination.lng, request.language),
-        _local_highlights(top.destination.lat, top.destination.lng, request.start_date),
-        social_highlights(top.destination.name, top.destination.lat, top.destination.lng, request.language),
-    )
+        profile_note = ""
+        if user is not None:
+            from app.db import SessionLocal, get_engine
+            from app.services.personalization import rebuild_profile_text
 
-    summary_prompt = (
-        f"Write 2-3 sentences for a spontaneous trip plan.\n"
-        f"Origin: {request.origin.label or 'user location'}\n"
-        f"Destination: {top.destination.name} ({top.destination.highlight})\n"
-        f"Drive: {top.drive_time}\n"
-        f"Trip type: {request.trip_type}\n"
-        f"Preferences: {', '.join(p.value for p in request.preferences) or 'general outdoor'}\n"
-        f"Weather: {weather}\n"
-        f"Tone: enthusiastic but practical.\n"
-        f"Respond in {lang_name(request.language)}. Keep place names in English."
-    )
-    summary = await generate_summary(summary_prompt)
-    if not summary:
-        summary = tr(
-            "summary_fallback",
-            request.language,
-            name=top.destination.name,
-            highlight=top.destination.highlight,
-            time=top.drive_time,
+            get_engine()
+            assert SessionLocal is not None
+            db = SessionLocal()
+            try:
+                profile_note = rebuild_profile_text(db, user)
+            finally:
+                db.close()
+
+        summary_prompt = (
+            f"Write 2-3 sentences for a spontaneous trip plan.\n"
+            f"Origin: {request.origin.label or 'user location'}\n"
+            f"Destination: {top.destination.name} ({top.destination.highlight})\n"
+            f"Drive: {top.drive_time}\n"
+            f"Trip type: {request.trip_type}\n"
+            f"Preferences: {', '.join(p.value for p in request.preferences) or 'general outdoor'}\n"
+            f"Weather: {weather}\n"
+            f"{('Traveler history: ' + profile_note) if profile_note else ''}\n"
+            f"Tone: enthusiastic but practical.\n"
+            f"Respond in {lang_name(request.language)}. Keep place names in English."
         )
+        summary = await generate_summary(summary_prompt)
+        if not summary:
+            summary = tr(
+                "summary_fallback",
+                request.language,
+                name=top.destination.name,
+                highlight=top.destination.highlight,
+                time=top.drive_time,
+            )
 
-    itinerary = _build_itinerary(request, top, alts, weather, summary, food, fun, events)
-    itinerary = await _apply_grounding(itinerary, request, food, fun, events)
-    itinerary = itinerary.model_copy(update={"guides": guides, "viral": viral})
-    candidate_payload = [
-        {
-            "name": c.destination.name,
-            "lat": c.destination.lat,
-            "lng": c.destination.lng,
-            "drive_time": c.drive_time,
-            "drive_hours": c.drive_hours,
-            "score": round(c.score, 2),
-            "highlight": c.destination.highlight,
-        }
-        for c in candidates
-    ]
-    return itinerary, candidate_payload
+        itinerary = _build_itinerary(request, top, alts, weather, summary, food, fun, events)
+        itinerary = await _apply_grounding(
+            itinerary, request, food, fun, events, profile_note=profile_note
+        )
+        itinerary = itinerary.model_copy(update={"guides": guides, "viral": viral})
+        candidate_payload = [
+            {
+                "name": c.destination.name,
+                "lat": c.destination.lat,
+                "lng": c.destination.lng,
+                "drive_time": c.drive_time,
+                "drive_hours": c.drive_hours,
+                "score": round(c.score, 2),
+                "highlight": c.destination.highlight,
+            }
+            for c in candidates
+        ]
+        return itinerary, candidate_payload
 
 
 async def plan_for_destination(req: SelectRequest) -> Itinerary:
@@ -337,7 +377,9 @@ def _est_flight_hours(origin_lat: float, origin_lng: float, doc: Doc) -> float:
     return miles / 500.0 + 0.5
 
 
-async def search_destinations(req: SearchRequest) -> tuple[Itinerary, list[dict], bool]:
+async def search_destinations(
+    req: SearchRequest, user=None
+) -> tuple[Itinerary, list[dict], bool]:
     """Natural-language destination search (RAG retrieval) → grounded itinerary.
 
     Retrieves destinations by semantic/keyword similarity to the free-text query,
@@ -352,11 +394,44 @@ async def search_destinations(req: SearchRequest) -> tuple[Itinerary, list[dict]
             return False
         return _est_flight_hours(req.origin.lat, req.origin.lng, doc) <= req.max_flight_hours
 
-    results = await retriever.retrieve(req.query, k=8, predicate=predicate)
+    # Blend user profile into the query so semantic retrieval leans toward past likes.
+    query = req.query
+    if user is not None:
+        from app.db import SessionLocal, get_engine
+        from app.services.personalization import rebuild_profile_text
+
+        get_engine()
+        assert SessionLocal is not None
+        db = SessionLocal()
+        try:
+            profile = rebuild_profile_text(db, user)
+            if profile and "none yet" not in profile:
+                query = f"{req.query}\nUser preferences: {profile}"
+        finally:
+            db.close()
+
+    results = await retriever.retrieve(query, k=8, predicate=predicate)
     if not results:
         raise ValueError(
             "No destinations match your search within range. Try widening drive/flight limits."
         )
+
+    if user is not None:
+        from app.db import SessionLocal, get_engine
+        from app.services.personalization import personalization_boost
+
+        get_engine()
+        assert SessionLocal is not None
+        db = SessionLocal()
+        try:
+            boosted = [
+                (doc, score + personalization_boost(db, user, doc.dest_name))
+                for doc, score in results
+            ]
+            boosted.sort(key=lambda x: x[1], reverse=True)
+            results = boosted
+        finally:
+            db.close()
 
     top_doc = results[0][0]
     if top_doc.travel_mode == "fly":

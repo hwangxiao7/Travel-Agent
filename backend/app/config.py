@@ -16,6 +16,13 @@ class Settings(BaseSettings):
     openai_base_url: str = ""  # custom endpoint (e.g. Ark); blank = api.openai.com
     openai_model: str = "gpt-4o-mini"
     openai_embed_model: str = "text-embedding-3-small"  # RAG semantic retrieval
+    # RAG embedding backend: "api" (OpenAI-compatible / Ollama) or "local" (PyTorch).
+    embedding_backend: str = "api"
+    local_embed_model: str = "BAAI/bge-small-en-v1.5"
+    # Optional cross-encoder rerank after hybrid retrieval (needs sentence-transformers).
+    rerank_enabled: bool = False
+    rerank_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    rerank_candidates: int = 20  # hybrid top-N fed into the reranker
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-3-5-haiku-20241022"
     mapbox_token: str = ""
@@ -26,6 +33,10 @@ class Settings(BaseSettings):
     # TikTok travel-guide scraping (subscribe to the API on RapidAPI first).
     rapidapi_tiktok_host: str = "tiktok-scraper7.p.rapidapi.com"
     cors_origins: str = "http://localhost:5173"
+    # Account / JWT (change jwt_secret in production).
+    jwt_secret: str = "dev-change-me-spontaneous-travel"
+    jwt_expire_hours: int = 168  # 7 days
+    database_url: str = ""  # blank → sqlite file under backend/data/
 
 
 settings = Settings()

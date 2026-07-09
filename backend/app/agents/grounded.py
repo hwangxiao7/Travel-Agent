@@ -61,6 +61,7 @@ async def generate_grounded_days(
     weather_note: str,
     preferences: list[str],
     language: str,
+    profile_note: str = "",
 ) -> list[DayPlan] | None:
     """Ask the LLM to write day-by-day activities grounded in retrieved facts.
 
@@ -80,7 +81,8 @@ async def generate_grounded_days(
         f"Nearby things to do: {_places_line(nearby_fun)}\n"
         f"Local events: {_events_line(events)}\n"
         f"Weather: {weather_note}\n"
-        f"Traveler preferences: {', '.join(preferences) or 'general outdoor'}\n\n"
+        f"Traveler preferences: {', '.join(preferences) or 'general outdoor'}\n"
+        f"{('Traveler history: ' + profile_note + chr(10)) if profile_note else ''}\n"
         "Rules:\n"
         "- Prefer real place names from the facts above; do not invent landmarks.\n"
         "- Include at least one nearby food stop per day when available.\n"

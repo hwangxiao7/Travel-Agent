@@ -1,15 +1,18 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
   createPlan,
   fetchFlightCalendar,
   fetchFlyDestinations,
   fetchFlyPrices,
   planFlyDestination,
+  saveTrip,
   searchFlights,
   searchPlan,
   selectDestination,
   sendChat,
+  type AuthUser,
 } from './api/client'
+import { AuthPanel } from './components/AuthPanel'
 import { CandidateList } from './components/CandidateList'
 import { ChatPanel } from './components/ChatPanel'
 import { ConstraintPanel } from './components/ConstraintPanel'
@@ -60,6 +63,8 @@ export default function App() {
   const [flightsLoading, setFlightsLoading] = useState(false)
   const [calendar, setCalendar] = useState<CalendarResult | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [user, setUser] = useState<AuthUser | null>(null)
+  const onUserChange = useCallback((u: AuthUser | null) => setUser(u), [])
 
   const selected = useMemo(
     () =>
@@ -243,6 +248,7 @@ export default function App() {
 
       <main className="layout">
         <aside className="sidebar">
+          <AuthPanel user={user} onUserChange={onUserChange} />
           <ConstraintPanel
             prefs={prefs}
             onChange={setPrefs}
@@ -298,7 +304,30 @@ export default function App() {
             onSelect={handleSelectFly}
             onSearchFlights={handleSearchFlights}
           />
-          <ItineraryCard itinerary={itinerary} origin={prefs.homeLocation} />
+          <ItineraryCard
+            itinerary={itinerary}
+            origin={prefs.homeLocation}
+            user={user}
+            onSaveTrip={
+              itinerary
+                ? async () => {
+                    const places = itinerary.days.flatMap((d) =>
+                      d.activities.map((a) => a.place),
+                    )
+                    await saveTrip({
+                      destination: itinerary.destination,
+                      destination_lat: itinerary.destination_lat,
+                      destination_lng: itinerary.destination_lng,
+                      travel_mode: itinerary.travel_mode,
+                      start_date: itinerary.days[0]?.date ?? startDate,
+                      end_date: itinerary.days.at(-1)?.date ?? '',
+                      summary: itinerary.summary,
+                      places,
+                    })
+                  }
+                : undefined
+            }
+          />
         </section>
       </main>
     </div>

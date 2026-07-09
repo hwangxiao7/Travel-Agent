@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException
+from contextlib import asynccontextmanager
+
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.agents.planner import (
@@ -10,7 +12,9 @@ from app.agents.planner import (
     search_destinations,
 )
 from app.agents.refiner import refine
+from app.auth import get_optional_user
 from app.config import settings
+from app.db import User, init_db
 from app.models.schemas import (
     CalendarRequest,
     CalendarResponse,
@@ -32,6 +36,7 @@ from app.models.schemas import (
     SelectRequest,
     SelectResponse,
 )
+from app.routers.account import router as account_router
 from app.services.airports import airport_by_iata, nearest_airport
 from app.services.destinations import DESTINATIONS
 from app.services.flights import (
@@ -43,8 +48,16 @@ from app.services.flights import (
 )
 from app.services.fly_destinations import FLY_DESTINATIONS
 from app.services.geocode import geocode
+from app.observability import atraced, setup_observability
 
-app = FastAPI(title="Spontaneous Travel Agent", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(title="Spontaneous Travel Agent", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -53,6 +66,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+setup_observability(app)
+app.include_router(account_router)
 
 
 @app.get("/api/health")
@@ -66,18 +82,25 @@ async def geocode_address(q: str):
 
 
 @app.post("/api/plan", response_model=PlanResponse)
-async def plan_trip(request: PlanRequest):
-    try:
-        itinerary, candidates = await create_plan(request)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return PlanResponse(itinerary=itinerary, candidates=candidates)
+async def plan_trip(
+    request: PlanRequest,
+    user: User | None = Depends(get_optional_user),
+):
+    async with atraced("/api/plan"):
+        try:
+            itinerary, candidates = await create_plan(request, user=user)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return PlanResponse(itinerary=itinerary, candidates=candidates)
 
 
 @app.post("/api/search", response_model=SearchResponse)
-async def search(request: SearchRequest):
+async def search(
+    request: SearchRequest,
+    user: User | None = Depends(get_optional_user),
+):
     try:
-        itinerary, candidates, semantic = await search_destinations(request)
+        itinerary, candidates, semantic = await search_destinations(request, user=user)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return SearchResponse(itinerary=itinerary, candidates=candidates, semantic=semantic)

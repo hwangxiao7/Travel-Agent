@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import type { AuthUser } from '../api/client'
 import { useI18n } from '../i18n'
 import type { EventItem, Itinerary, Location, Place, SocialPost } from '../types'
 import { copyShareText, downloadICS, googleMapsUrl } from '../utils/export'
+import { PlaceReviews } from './PlaceReviews'
 
 function compact(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
@@ -12,6 +14,8 @@ function compact(n: number): string {
 interface Props {
   itinerary: Itinerary | null
   origin?: Location
+  user?: AuthUser | null
+  onSaveTrip?: () => Promise<void> | void
 }
 
 const CATEGORY_ICON: Record<string, string> = {
@@ -39,9 +43,12 @@ const CATEGORY_ICON: Record<string, string> = {
   walk: '🚶',
 }
 
-export function ItineraryCard({ itinerary, origin }: Props) {
+export function ItineraryCard({ itinerary, origin, user = null, onSaveTrip }: Props) {
   const { t } = useI18n()
   const [copied, setCopied] = useState(false)
+  const [saveMsg, setSaveMsg] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [openReview, setOpenReview] = useState<string | null>(null)
 
   const catLabel = (c: string) => t(`place.${c}`)
 
@@ -51,6 +58,20 @@ export function ItineraryCard({ itinerary, origin }: Props) {
     if (ok) {
       setCopied(true)
       setTimeout(() => setCopied(false), 1800)
+    }
+  }
+
+  const handleSave = async () => {
+    if (!onSaveTrip) return
+    setSaving(true)
+    setSaveMsg(null)
+    try {
+      await onSaveTrip()
+      setSaveMsg(t('trip.saved'))
+    } catch (e) {
+      setSaveMsg(e instanceof Error ? e.message : t('trip.saveFailed'))
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -178,7 +199,14 @@ export function ItineraryCard({ itinerary, origin }: Props) {
           <button type="button" onClick={handleCopy}>
             {copied ? t('itin.copied') : t('itin.copy')}
           </button>
+          {onSaveTrip && (
+            <button type="button" onClick={handleSave} disabled={saving || !user}>
+              {saving ? t('trip.saving') : t('trip.save')}
+            </button>
+          )}
         </div>
+        {saveMsg && <p className="review-msg">{saveMsg}</p>}
+        {!user && onSaveTrip && <p className="auth-hint">{t('auth.needLogin')}</p>}
       </header>
 
       {itinerary.days.map((day) => (
@@ -192,6 +220,22 @@ export function ItineraryCard({ itinerary, origin }: Props) {
                   <strong>{a.place}</strong>
                   <span className="dur">{a.duration}</span>
                   {a.note && <p className="note">{a.note}</p>}
+                  <button
+                    type="button"
+                    className="ghost review-toggle"
+                    onClick={() =>
+                      setOpenReview(openReview === a.place ? null : a.place)
+                    }
+                  >
+                    {t('review.toggle')}
+                  </button>
+                  {openReview === a.place && (
+                    <PlaceReviews
+                      placeName={a.place}
+                      destination={itinerary.destination}
+                      user={user}
+                    />
+                  )}
                 </div>
               </li>
             ))}

@@ -246,3 +246,85 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
     itinerary: Itinerary | None = None
+
+
+# --- Account / social ---
+
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str = Field(min_length=6, max_length=72)
+    display_name: str = ""
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class UserOut(BaseModel):
+    id: int
+    email: str
+    display_name: str
+
+
+class AuthResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserOut
+
+
+class SaveTripRequest(BaseModel):
+    destination: str
+    destination_lat: float = 0.0
+    destination_lng: float = 0.0
+    travel_mode: Literal["drive", "fly"] = "drive"
+    start_date: str = ""
+    end_date: str = ""
+    summary: str = ""
+    places: list[str] = Field(default_factory=list)
+
+
+class TripOut(BaseModel):
+    id: int
+    destination: str
+    destination_lat: float
+    destination_lng: float
+    travel_mode: str
+    start_date: str
+    end_date: str
+    summary: str
+    places: list[str]
+    created_at: str
+
+
+class ReviewCreate(BaseModel):
+    place_name: str
+    destination: str = ""
+    rating: int = Field(ge=1, le=5)
+    comment: str = ""
+
+
+class ReviewOut(BaseModel):
+    id: int
+    place_name: str
+    destination: str
+    rating: int
+    comment: str
+    author: str
+    created_at: str
+    updated_at: str
+
+
+class PlaceReviewsResponse(BaseModel):
+    place_name: str
+    average_rating: float
+    review_count: int
+    reviews: list[ReviewOut]
+
+
+class ProfileOut(BaseModel):
+    user: UserOut
+    profile_text: str
+    trip_count: int
+    review_count: int
