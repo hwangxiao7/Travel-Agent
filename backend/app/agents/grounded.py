@@ -48,6 +48,53 @@ def _flat_activities(parsed: dict | None) -> list[dict] | None:
     return None
 
 
+def validate_grounded_output(
+    days: list[DayPlan],
+    *,
+    known_places: set[str],
+    context: str,
+) -> dict:
+    """Post-generation checks: place coverage vs known POIs / context (step 8)."""
+    places = [a.place for d in days for a in d.activities if a.place]
+    if not places:
+        return {"ok": False, "groundedness": 0.0, "hallucination_rate": 1.0, "n_places": 0}
+    ctx = context.lower()
+    known_l = {p.lower() for p in known_places}
+    grounded = 0
+    halluc = 0
+    for p in places:
+        pl = p.lower()
+        in_known = any(pl in k or k in pl for k in known_l) if known_l else False
+        in_ctx = pl in ctx or any(tok in ctx for tok in pl.split() if len(tok) > 3)
+        if in_known or in_ctx:
+            grounded += 1
+        else:
+            halluc += 1
+    n = len(places)
+    return {
+        "ok": halluc / n <= 0.4,
+        "groundedness": round(grounded / n, 3),
+        "hallucination_rate": round(halluc / n, 3),
+        "n_places": n,
+    }
+
+
+def _merge_grounding_context(base: str, rag_context: str = "") -> str:
+    """Combine destination blurb with retrieved RAG blocks (docs + memory)."""
+    parts = [p.strip() for p in (base, rag_context) if p and p.strip()]
+    if not parts:
+        return ""
+    seen: set[str] = set()
+    out: list[str] = []
+    for p in parts:
+        key = p.lower()[:160]
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(p)
+    return "\n\n".join(out)
+
+
 async def generate_grounded_days(
     *,
     destination: str,
@@ -62,21 +109,25 @@ async def generate_grounded_days(
     preferences: list[str],
     language: str,
     profile_note: str = "",
+    rag_context: str = "",
 ) -> list[DayPlan] | None:
     """Ask the LLM to write day-by-day activities grounded in retrieved facts.
 
-    Returns None (so the caller keeps the curated catalog itinerary) when no LLM
-    is configured or the response can't be parsed into the expected shape."""
+    `context` is the destination catalog blurb; `rag_context` is optional
+    multi-doc retrieval (top destinations + user memory) from the RAG pipeline.
+    Returns None when no LLM is configured or parsing fails."""
     day_count = len(base_days)
     if day_count == 0:
         return None
+
+    full_context = _merge_grounding_context(context, rag_context)
 
     prompt = (
         "You are a meticulous travel planner. Using ONLY the grounded facts below, "
         f"write a {day_count}-day itinerary (days numbered 1..{day_count}) for "
         f"{destination} ({region}).\n\n"
         f"Overview: {highlight}\n"
-        f"Reference context: {context}\n"
+        f"Retrieved RAG context (prefer these facts):\n{full_context or '(none)'}\n"
         f"Nearby places to eat: {_places_line(nearby_food)}\n"
         f"Nearby things to do: {_places_line(nearby_fun)}\n"
         f"Local events: {_events_line(events)}\n"
@@ -84,7 +135,9 @@ async def generate_grounded_days(
         f"Traveler preferences: {', '.join(preferences) or 'general outdoor'}\n"
         f"{('Traveler history: ' + profile_note + chr(10)) if profile_note else ''}\n"
         "Rules:\n"
-        "- Prefer real place names from the facts above; do not invent landmarks.\n"
+        "- Prefer real place names from the retrieved facts above; do not invent landmarks.\n"
+        "- When traveler history / memory is present, bias activities toward liked themes "
+        "and avoid past dislikes when possible.\n"
         "- Include at least one nearby food stop per day when available.\n"
         "- 3 to 5 timed activities per day, realistic ordering and durations.\n"
         "- Adapt to the weather note when relevant.\n"
@@ -130,3 +183,8 @@ async def generate_grounded_days(
     if all(not d.activities for d in out):
         return None
     return out
+
+
+def grounding_context_used(base: str, rag_context: str = "") -> str:
+    """Public helper so planners validate against the same merged context."""
+    return _merge_grounding_context(base, rag_context)

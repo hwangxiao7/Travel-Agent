@@ -158,6 +158,19 @@ export interface Candidate {
   drive_hours: number
   score: number
   highlight: string
+  matched_query_terms?: string[]
+  matched_tags?: string[]
+  semantic_score?: number
+  keyword_score?: number
+  distance_score?: number
+  personalization_score?: number
+  explore_score?: number
+  search_score?: number
+  tag_score?: number
+  scenery_score?: number
+  negative_penalty?: number
+  final_score?: number
+  explanation?: string
 }
 
 export interface PlanResponse {

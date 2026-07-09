@@ -1,0 +1,139 @@
+[
+  {
+    "id": "zh-waterfall-easy",
+    "query": "3小时内能徒步看瀑布，不要太累",
+    "origin_lat": 37.7749,
+    "origin_lng": -122.4194,
+    "max_drive_hours": 3.0,
+    "expect_intent": {
+      "max_drive_hours": 3.0,
+      "activities": ["hiking"],
+      "scenery": ["waterfall"],
+      "pace": "easy",
+      "negative_preferences": ["strenuous"]
+    },
+    "relevant": [
+      "Big Basin Redwoods State Park",
+      "Yosemite National Park",
+      "Lake Tahoe — Emerald Bay"
+    ]
+  },
+  {
+    "id": "en-beach-weekend",
+    "query": "weekend beach trip within 2 hours drive, relaxed pace",
+    "origin_lat": 37.7749,
+    "origin_lng": -122.4194,
+    "max_drive_hours": 2.0,
+    "expect_intent": {
+      "trip_type": "weekend",
+      "max_drive_hours": 2.0,
+      "activities": ["beach"],
+      "pace": "easy"
+    },
+    "relevant": [
+      "Point Reyes National Seashore",
+      "Golden Gate Park & Lands End"
+    ]
+  },
+  {
+    "id": "en-national-park-hike",
+    "query": "day trip hiking in a national park under 4 hours",
+    "origin_lat": 37.7749,
+    "origin_lng": -122.4194,
+    "max_drive_hours": 4.0,
+    "expect_intent": {
+      "trip_type": "day-trip",
+      "max_drive_hours": 4.0,
+      "activities": ["hiking", "national-park"],
+      "preferences": ["hiking", "national-park"]
+    },
+    "relevant": [
+      "Yosemite National Park",
+      "Pinnacles National Park",
+      "Point Reyes National Seashore"
+    ]
+  },
+  {
+    "id": "en-forest-quiet",
+    "query": "quiet forest walk, avoid crowds, within 1.5 hours",
+    "origin_lat": 37.7749,
+    "origin_lng": -122.4194,
+    "max_drive_hours": 1.5,
+    "expect_intent": {
+      "max_drive_hours": 1.5,
+      "activities": ["forest"],
+      "scenery": ["quiet"],
+      "negative_preferences": ["crowded"]
+    },
+    "relevant": [
+      "Muir Woods National Monument",
+      "Mount Tamalpais State Park",
+      "Big Basin Redwoods State Park"
+    ]
+  },
+  {
+    "id": "personalization-boost",
+    "query": "something outdoors nearby",
+    "origin_lat": 37.7749,
+    "origin_lng": -122.4194,
+    "max_drive_hours": 3.0,
+    "expect_intent": {},
+    "relevant": ["Muir Woods National Monument"],
+    "profile_text": "Traveler likes Muir Woods and redwood forest hikes. Highly rated places: Muir Woods (5/5).",
+    "prefer_destinations": ["Muir Woods National Monument"]
+  },
+  {
+    "id": "flight-allowed",
+    "query": "fly under 3 hours to a national park for hiking",
+    "origin_lat": 37.7749,
+    "origin_lng": -122.4194,
+    "max_drive_hours": 3.0,
+    "allow_flight": true,
+    "expect_intent": {
+      "max_flight_hours": 3.0,
+      "allow_flight": true,
+      "activities": ["hiking", "national-park"]
+    },
+    "relevant": [
+      "Zion National Park",
+      "Yosemite National Park",
+      "Pinnacles National Park"
+    ]
+  },
+  {
+    "id": "zh-aurora",
+    "query": "我想去看极光，最好是国家公园",
+    "origin_lat": 37.7749,
+    "origin_lng": -122.4194,
+    "max_drive_hours": 3.0,
+    "allow_flight": false,
+    "expect_intent": {
+      "activities": ["aurora"],
+      "scenery": ["aurora"],
+      "allow_flight": true,
+      "season": "winter"
+    },
+    "relevant": [
+      "Fairbanks — Northern Lights",
+      "Denali National Park",
+      "Yellowknife — Aurora Capital",
+      "Whitehorse & Yukon aurora"
+    ]
+  },
+  {
+    "id": "zh-whale",
+    "query": "突发奇想想去看鲸鱼",
+    "origin_lat": 37.7749,
+    "origin_lng": -122.4194,
+    "max_drive_hours": 3.0,
+    "expect_intent": {
+      "activities": ["whale-watching"],
+      "scenery": ["whale"]
+    },
+    "relevant": [
+      "Monterey Bay — Whale Watching",
+      "Santa Cruz & Natural Bridges",
+      "Point Reyes National Seashore"
+    ]
+  }
+]

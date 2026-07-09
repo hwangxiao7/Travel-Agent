@@ -152,6 +152,20 @@ FLY_DESTINATIONS: tuple[FlyDestination, ...] = (
         ),
     ),
     FlyDestination(
+        "Catalina Island — Avalon",
+        33.3422,
+        -118.3287,
+        "California",
+        "LAX",
+        (Preference.BEACH, Preference.CITY_WALK),
+        "Island day trip for snorkeling, glass-bottom boats, and Avalon town walks.",
+        (
+            ("09:30", "Lover's Cove snorkeling", "2.5h", "Clear water snorkeling with fish and kelp near Avalon."),
+            ("13:00", "Avalon waterfront stroll", "2h", "City-walk cafes, shops, and harbor views."),
+            ("15:30", "Glass-bottom boat (optional)", "1h", "See the reef without getting wet."),
+        ),
+    ),
+    FlyDestination(
         "Glacier National Park",
         48.6968,
         -113.7183,
@@ -163,6 +177,72 @@ FLY_DESTINATIONS: tuple[FlyDestination, ...] = (
             ("08:30", "Going-to-the-Sun Road", "2.5h", "One of the most scenic drives in America."),
             ("11:30", "Hidden Lake Overlook", "2h", "Alpine trail from Logan Pass."),
             ("15:00", "Lake McDonald shoreline", "1.5h", "Colorful pebbles and calm water."),
+        ),
+    ),
+    # High-latitude aurora destinations (fly trips; not Bay Area day drives).
+    FlyDestination(
+        "Fairbanks — Northern Lights",
+        64.8378,
+        -147.7164,
+        "Alaska",
+        "FAI",
+        (Preference.HIKING, Preference.FOREST),
+        "One of the world's most reliable aurora cities under the auroral oval.",
+        (
+            ("10:00", "Museum of the North", "1.5h", "Alaska culture and aurora science exhibits."),
+            ("13:00", "Chena Hot Springs day trip", "4h", "Soak outdoors while waiting for clear skies."),
+            ("21:30", "Aurora viewing (Cleary Summit / Murphy Dome)", "3h", "Dark-sky ridges north of town for northern lights."),
+        ),
+        (
+            ("22:00", "Guided aurora tour / cabin night", "4h", "Remote dark-sky site with heated shelter."),
+        ),
+    ),
+    FlyDestination(
+        "Denali National Park",
+        63.1148,
+        -151.1926,
+        "Alaska",
+        "FAI",
+        (Preference.NATIONAL_PARK, Preference.HIKING, Preference.FOREST),
+        "Alaska's flagship park — alpine tundra by day, aurora by night in winter.",
+        (
+            ("09:00", "Denali Visitor Center & park road views", "2h", "Orientation and mountain vistas when weather allows."),
+            ("12:00", "Easy tundra / riverside walk near entrance", "2h", "Wildlife spotting without a long shuttle."),
+            ("21:00", "Aurora watch near Healy / park boundary", "3h", "High-latitude northern lights away from city glow."),
+        ),
+        (
+            ("08:30", "Savage River loop", "2.5h", "Classic day hike with Denali views on clear days."),
+        ),
+    ),
+    FlyDestination(
+        "Yellowknife — Aurora Capital",
+        62.4540,
+        -114.3718,
+        "Northwest Territories, Canada",
+        "YZF",
+        (Preference.CITY_WALK, Preference.HIKING),
+        "Canada's aurora capital on the edge of Great Slave Lake.",
+        (
+            ("11:00", "Old Town & Pilot's Monument", "1.5h", "Colorful houseboats and lake overlooks."),
+            ("14:00", "Frame Lake Trail", "1.5h", "Easy urban nature walk."),
+            ("22:00", "Aurora village / Prosperous Lake viewing", "4h", "Guided northern-lights night under dark skies."),
+        ),
+        (
+            ("21:30", "Glass-walled aurora lodge night", "5h", "Warm viewing cabin while waiting for the lights."),
+        ),
+    ),
+    FlyDestination(
+        "Whitehorse & Yukon aurora",
+        60.7212,
+        -135.0568,
+        "Yukon, Canada",
+        "YXY",
+        (Preference.HIKING, Preference.FOREST),
+        "Yukon wilderness gateway with strong winter aurora odds.",
+        (
+            ("10:00", "Miles Canyon walk", "1.5h", "Basalt canyon on the Yukon River."),
+            ("13:00", "SS Klondike / waterfront", "1h", "Town history and river views."),
+            ("21:30", "Aurora viewing outside city lights", "3h", "Northern lights over boreal forest."),
         ),
     ),
 )

@@ -116,6 +116,13 @@ class SearchResponse(BaseModel):
     itinerary: Itinerary
     candidates: list[dict]
     semantic: bool = False  # True when embedding-based retrieval was used
+    intent: dict | None = None
+    validation: dict | None = None
+    latency_ms: float | None = None
+    context_blocks: list[str] = Field(default_factory=list)
+    memory: dict | None = None
+    fusion_weights: dict | None = None
+    search_path: str | None = None  # "corpus" | "poi"
 
 
 class SelectRequest(BaseModel):

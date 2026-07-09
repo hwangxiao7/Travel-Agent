@@ -179,14 +179,37 @@ OSRM、Overpass、Nominatim、OpenWeather、Ticketmaster、RapidAPI Flights/TikT
 
 ---
 
-## 9. 工程亮点（简历可用）
+## 9. RAG 进阶（面试可讲）
 
-- 设计闭域 RAG（语料、缓存 embedding、混合检索、JSON grounded 生成），支持
-  Ollama 全本地，并可选 PyTorch 本地 embedding / cross-encoder rerank。
-- 账号 + 公开景点评价 + 用户画像个性化：把真实体验反馈进检索排序与行程生成。
-- 异步 agents + best-effort 多 API 扇出；单点失败不拖垮规划。
-- OpenTelemetry + Prometheus + 结构化日志，便于定位延迟与外部依赖失败。
-- React 19 + TypeScript SPA：地图、导出、中英、登录与评价闭环。
+完整管线：`query_understanding` → `rag_pipeline` → grounded generation → validation。
+
+1. **NLP Query Understanding**（`services/query_understanding.py`）  
+   从中英自然语言抽出：时长、车程/飞行、活动、风景、季节、预算、节奏、约束、负向偏好；并检测是否有自由文本 focus（开放词表，不靠预设同义词表）。
+
+2. **双路径检索（语义门控，非关键词）**  
+   - **Path A — Corpus RAG**：LLM 把任意语言活动改写成英文短语 → embedding 相似度命中 curated 语料 → hybrid retrieve + 搜广推。  
+   - **Path B — Nearby POI search**（`services/poi_search.py`）：语料语义分过低时，不退回公园；LLM 改写后用 Nominatim 搜附近真实地点（密室、冲浪点、新玩法等）。  
+   - **检索→生成闭环**：`context_blocks`（Top 目的地 + 用户记忆）注入 `generate_grounded_days`，不只用于排序。  
+   - **`/api/plan` 也走 RAG 重排**：Preference chips 合成 query 后用同一管线排序并接地。
+
+3. **Preferences 等权 OR**：勾选任意 chip ≈ 同分；自由文本优先于 UI chips。
+
+4. **Personalized RAG + 搜广推**：用户记忆可检索；内部多目标融合；候选卡展示人话「推荐理由」（不展示分数字段）。
+
+5. **RAG Evaluation**（`app/eval/`）。
+
+```bash
+cd backend && python -m app.eval.run_eval
+```
+
+---
+
+## 10. 工程亮点（简历可用）
+
+- 闭域 RAG + LLM 开放词表语义检索 + 用户记忆 RAG + 搜广推多目标排序 + 评测框架。
+- 账号 + 公开景点评价：真实反馈进检索与行程。
+- 异步 agents + best-effort 多 API；OTel + Prometheus + 结构化日志。
+- React 19 + TypeScript：地图、导出、中英、登录评价（内部打分不暴露给用户）。
 
 ### 调试亮点
 - Overpass 缺 `User-Agent` → HTTP 406。  
@@ -194,7 +217,7 @@ OSRM、Overpass、Nominatim、OpenWeather、Ticketmaster、RapidAPI Flights/TikT
 
 ---
 
-## 10. 如何运行
+## 11. 如何运行
 
 ```bash
 # 后端
@@ -205,6 +228,9 @@ uvicorn app.main:app --reload            # http://127.0.0.1:8000
 
 # 前端
 cd frontend && npm install && npm run dev  # http://localhost:5173
+
+# RAG 评测
+cd backend && python -m app.eval.run_eval
 ```
 
 可选：

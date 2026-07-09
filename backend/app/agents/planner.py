@@ -3,8 +3,12 @@ from __future__ import annotations
 import asyncio
 from datetime import date, timedelta
 
-from app.agents.grounded import generate_grounded_days
-from app.knowledge.corpus import Doc, context_for
+from app.agents.grounded import (
+    generate_grounded_days,
+    grounding_context_used,
+    validate_grounded_output,
+)
+from app.knowledge.corpus import context_for
 from app.models.schemas import (
     Activity,
     DayPlan,
@@ -27,7 +31,10 @@ from app.services.geo import estimate_drive_hours, format_duration, haversine_mi
 from app.services.i18n import lang_name, pack, tr
 from app.services.llm import fetch_weather_note, generate_summary
 from app.services.places import fetch_nearby_places
-from app.services.retrieval import retriever
+from app.services.poi_search import PoiHit, search_nearby_pois
+from app.services.query_understanding import has_focus_query
+from app.services.rag_pipeline import corpus_has_semantic_focus
+from app.services.rag_pipeline import rag_pipeline
 from app.services.routing import drive_duration_hours, drive_durations_hours
 from app.services.social import social_highlights
 
@@ -84,20 +91,25 @@ async def _local_highlights(
 
 async def _apply_grounding(
     itinerary: Itinerary,
-    request: PlanRequest | SelectRequest | FlyPlanRequest,
+    request: PlanRequest | SelectRequest | FlyPlanRequest | SearchRequest,
     food: list[Place],
     fun: list[Place],
     events: list[Event],
     profile_note: str = "",
+    rag_context: str = "",
 ) -> Itinerary:
     """RAG step: replace catalog activities with LLM-generated, grounded ones.
 
-    No-op (returns the catalog itinerary unchanged) when no LLM is configured."""
+    `rag_context` is multi-doc retrieval (top destinations + user memory) from
+    the search/plan pipeline — not just the single destination blurb.
+    """
+    base_ctx = context_for(itinerary.destination)
+    merged = grounding_context_used(base_ctx, rag_context)
     grounded = await generate_grounded_days(
         destination=itinerary.destination,
         region="",
         highlight=itinerary.summary,
-        context=context_for(itinerary.destination),
+        context=base_ctx,
         base_days=itinerary.days,
         nearby_food=food,
         nearby_fun=fun,
@@ -106,10 +118,38 @@ async def _apply_grounding(
         preferences=[p.value for p in request.preferences],
         language=request.language,
         profile_note=profile_note,
+        rag_context=rag_context,
     )
     if grounded:
-        return itinerary.model_copy(update={"days": grounded})
+        known = {p.name for p in food + fun}
+        check = validate_grounded_output(
+            grounded,
+            known_places=known,
+            context=merged or base_ctx or "",
+        )
+        if check.get("ok", True):
+            return itinerary.model_copy(update={"days": grounded})
     return itinerary
+
+
+def _rag_context_text(blocks: list[str] | None, *, limit: int = 4) -> str:
+    if not blocks:
+        return ""
+    return "\n\n".join(b for b in blocks[:limit] if b)
+
+
+def _synthetic_plan_query(request: PlanRequest, profile_text: str = "") -> str:
+    """Build an embeddable query when the user only picked preference chips."""
+    prefs = [p.value.replace("-", " ") for p in request.preferences]
+    bits = [f"{request.trip_type.replace('-', ' ')} near me"]
+    if prefs:
+        bits.append("looking for " + ", ".join(prefs))
+    else:
+        bits.append("outdoor day trip destinations")
+    bits.append(f"within {request.max_drive_hours:g} hours drive")
+    if profile_text and "none yet" not in profile_text.lower():
+        bits.append("traveler likes: " + profile_text[:200])
+    return ". ".join(bits)
 
 
 def _build_itinerary(
@@ -164,20 +204,60 @@ async def create_plan(
                 "No destinations match your drive-time limit. Try increasing max drive hours or broadening preferences."
             )
 
-        # Personalize ranking when a logged-in user is present.
+        profile_note = ""
+        memory_ctx = None
+        db = None
         if user is not None:
             from app.db import SessionLocal, get_engine
-            from app.services.personalization import personalization_boost
+            from app.services.personalization import rebuild_profile_text
+            from app.services.user_memory import retrieve_user_memories
 
             get_engine()
             assert SessionLocal is not None
             db = SessionLocal()
             try:
-                for c in candidates:
-                    c.score += personalization_boost(db, user, c.destination.name)
-                candidates.sort(key=lambda c: c.score, reverse=True)
+                profile_note = rebuild_profile_text(db, user)
+                synth = _synthetic_plan_query(request, profile_note)
+                memory_ctx = await retrieve_user_memories(db, user, synth, k=5)
             finally:
+                # Keep session closed; memory_ctx is in-memory after retrieve.
                 db.close()
+                db = None
+
+        # RAG re-rank over drive-feasible candidates (amplifies RAG on chip-only path).
+        synth_query = _synthetic_plan_query(request, profile_note)
+        rag = await rag_pipeline.run(
+            query=synth_query,
+            origin_lat=request.origin.lat,
+            origin_lng=request.origin.lng,
+            max_drive_hours=request.max_drive_hours,
+            max_flight_hours=request.max_flight_hours,
+            allow_flight=request.allow_flight,
+            preferences=[p.value for p in request.preferences],
+            profile_text=profile_note,
+            memory_ctx=memory_ctx,
+            k=max(8, len(candidates)),
+        )
+        by_name = {c.destination.name: c for c in candidates}
+        reranked: list[ScoredDestination] = []
+        for ranked in rag.ranked:
+            base = by_name.get(ranked.doc.dest_name)
+            if base is None:
+                continue
+            # Blend catalog feasibility score with RAG final score.
+            base.score = 0.45 * base.score + 0.55 * (ranked.scores.final_score * 10)
+            # Carry human explanation onto the candidate payload later.
+            setattr(base, "_rag_explanation", ranked.scores.explanation)
+            setattr(base, "_rag_highlight", ranked.doc.highlight or base.destination.highlight)
+            reranked.append(base)
+        # Keep any feasible destinations RAG dropped (e.g. embedding miss) at the end.
+        seen = {c.destination.name for c in reranked}
+        for c in candidates:
+            if c.destination.name not in seen:
+                reranked.append(c)
+        if reranked:
+            candidates = reranked
+            candidates.sort(key=lambda c: c.score, reverse=True)
 
         await _refine_drive_times(request.origin, candidates)
         top = candidates[0]
@@ -190,19 +270,7 @@ async def create_plan(
             ),
         )
 
-        profile_note = ""
-        if user is not None:
-            from app.db import SessionLocal, get_engine
-            from app.services.personalization import rebuild_profile_text
-
-            get_engine()
-            assert SessionLocal is not None
-            db = SessionLocal()
-            try:
-                profile_note = rebuild_profile_text(db, user)
-            finally:
-                db.close()
-
+        rag_ctx = _rag_context_text(rag.context_blocks)
         summary_prompt = (
             f"Write 2-3 sentences for a spontaneous trip plan.\n"
             f"Origin: {request.origin.label or 'user location'}\n"
@@ -212,6 +280,7 @@ async def create_plan(
             f"Preferences: {', '.join(p.value for p in request.preferences) or 'general outdoor'}\n"
             f"Weather: {weather}\n"
             f"{('Traveler history: ' + profile_note) if profile_note else ''}\n"
+            f"{('Retrieved context: ' + rag_ctx[:500]) if rag_ctx else ''}\n"
             f"Tone: enthusiastic but practical.\n"
             f"Respond in {lang_name(request.language)}. Keep place names in English."
         )
@@ -227,7 +296,13 @@ async def create_plan(
 
         itinerary = _build_itinerary(request, top, alts, weather, summary, food, fun, events)
         itinerary = await _apply_grounding(
-            itinerary, request, food, fun, events, profile_note=profile_note
+            itinerary,
+            request,
+            food,
+            fun,
+            events,
+            profile_note=profile_note,
+            rag_context=rag_ctx,
         )
         itinerary = itinerary.model_copy(update={"guides": guides, "viral": viral})
         candidate_payload = [
@@ -238,14 +313,20 @@ async def create_plan(
                 "drive_time": c.drive_time,
                 "drive_hours": c.drive_hours,
                 "score": round(c.score, 2),
-                "highlight": c.destination.highlight,
+                "highlight": getattr(c, "_rag_highlight", None) or c.destination.highlight,
+                "explanation": getattr(c, "_rag_explanation", None) or "",
             }
             for c in candidates
         ]
         return itinerary, candidate_payload
 
 
-async def plan_for_destination(req: SelectRequest) -> Itinerary:
+async def plan_for_destination(
+    req: SelectRequest,
+    *,
+    rag_context: str = "",
+    profile_note: str = "",
+) -> Itinerary:
     dest = next((d for d in DESTINATIONS if d.name == req.destination_name), None)
     if dest is None:
         raise ValueError(f"Unknown destination: {req.destination_name}")
@@ -300,11 +381,24 @@ async def plan_for_destination(req: SelectRequest) -> Itinerary:
         )
 
     itinerary = _build_itinerary(plan_req, scored, alts, weather, summary, food, fun, events)
-    itinerary = await _apply_grounding(itinerary, req, food, fun, events)
+    itinerary = await _apply_grounding(
+        itinerary,
+        req,
+        food,
+        fun,
+        events,
+        profile_note=profile_note,
+        rag_context=rag_context,
+    )
     return itinerary.model_copy(update={"guides": guides, "viral": viral})
 
 
-async def plan_for_fly_destination(req: FlyPlanRequest) -> Itinerary:
+async def plan_for_fly_destination(
+    req: FlyPlanRequest,
+    *,
+    rag_context: str = "",
+    profile_note: str = "",
+) -> Itinerary:
     dest = next((d for d in FLY_DESTINATIONS if d.name == req.destination_name), None)
     if dest is None:
         raise ValueError(f"Unknown fly destination: {req.destination_name}")
@@ -359,7 +453,15 @@ async def plan_for_fly_destination(req: FlyPlanRequest) -> Itinerary:
         )
 
     itinerary = _build_itinerary(plan_req, scored, [], weather, summary, food, fun, events)
-    itinerary = await _apply_grounding(itinerary, req, food, fun, events)
+    itinerary = await _apply_grounding(
+        itinerary,
+        req,
+        food,
+        fun,
+        events,
+        profile_note=profile_note,
+        rag_context=rag_context,
+    )
     return itinerary.model_copy(
         update={
             "travel_mode": "fly",
@@ -371,69 +473,208 @@ async def plan_for_fly_destination(req: FlyPlanRequest) -> Itinerary:
     )
 
 
-def _est_flight_hours(origin_lat: float, origin_lng: float, doc: Doc) -> float:
-    # Cheap flight-time proxy for filtering (cruise + overhead), no airport lookup.
-    miles = haversine_miles(origin_lat, origin_lng, doc.lat, doc.lng)
-    return miles / 500.0 + 0.5
+async def plan_for_poi(
+    req: SearchRequest,
+    hit: PoiHit,
+    alternatives: list[str],
+) -> Itinerary:
+    """Build a day plan around a live POI hit (secondary search path)."""
+    weather, (food, fun, events) = await asyncio.gather(
+        fetch_weather_note(hit.lat, hit.lng, req.language),
+        _local_highlights(hit.lat, hit.lng, req.start_date),
+    )
+    summary_prompt = (
+        f"Write 2-3 sentences for a spontaneous trip focused on this place.\n"
+        f"Origin: {req.origin.label or 'user location'}\n"
+        f"Place: {hit.name}\n"
+        f"Why: {hit.highlight}\n"
+        f"Drive: {hit.drive_time}\n"
+        f"User asked: {req.query}\n"
+        f"Weather: {weather}\n"
+        f"Tone: practical and specific to the activity the user asked for.\n"
+        f"Respond in {lang_name(req.language)}. Keep place names in English."
+    )
+    summary = await generate_summary(summary_prompt)
+    if not summary:
+        summary = (
+            f"Head to {hit.name} ({hit.drive_time} away) for “{req.query}”. "
+            f"{hit.highlight}"
+        )
+
+    start = date.fromisoformat(req.start_date)
+    activities = [
+        Activity(
+            time="10:00",
+            place=hit.name,
+            duration="2–3h",
+            note=hit.highlight or f"Main stop for: {req.query}",
+        ),
+    ]
+    if food:
+        activities.append(
+            Activity(
+                time="13:00",
+                place=food[0].name,
+                duration="1h",
+                note=food[0].note or "Nearby food stop",
+            )
+        )
+    if fun:
+        activities.append(
+            Activity(
+                time="15:00",
+                place=fun[0].name,
+                duration="1h",
+                note=fun[0].note or "Extra nearby stop",
+            )
+        )
+    days = [DayPlan(date=start.isoformat(), activities=activities)]
+    if req.trip_type == "weekend":
+        end = date.fromisoformat(req.end_date or (start + timedelta(days=1)).isoformat())
+        days.append(
+            DayPlan(
+                date=end.isoformat(),
+                activities=[
+                    Activity(
+                        time="10:00",
+                        place=hit.name,
+                        duration="2h",
+                        note="Return visit / second session if available.",
+                    )
+                ],
+            )
+        )
+
+    return Itinerary(
+        destination=hit.name,
+        destination_lat=hit.lat,
+        destination_lng=hit.lng,
+        drive_time=hit.drive_time,
+        drive_hours=round(hit.drive_hours, 2),
+        days=days,
+        alternatives=alternatives,
+        packing_tips=_packing_tips(req.preferences, req.trip_type, req.language),
+        weather_note=weather,
+        summary=summary,
+        nearby_food=food or [],
+        nearby_fun=fun or [],
+        events=events or [],
+    )
+
+
+def _corpus_has_focus_hit(ranked, intent) -> bool:
+    """Semantic gate: embedding similarity to LLM activity phrase, not keywords."""
+    if not has_focus_query(intent) or not ranked:
+        return False
+    return corpus_has_semantic_focus(ranked)
 
 
 async def search_destinations(
     req: SearchRequest, user=None
-) -> tuple[Itinerary, list[dict], bool]:
-    """Natural-language destination search (RAG retrieval) → grounded itinerary.
+) -> tuple[Itinerary, list[dict], bool, dict]:
+    """Two-path search:
+    1) Curated corpus RAG (LLM rewrite + embedding similarity)
+    2) Nearby POI place-search (when corpus semantic score is too low)
+    """
+    from app.services.query_understanding import (
+        apply_intent_to_request_fields,
+        extract_intent,
+        has_focus_query,
+    )
 
-    Retrieves destinations by semantic/keyword similarity to the free-text query,
-    filtered to what's reachable within the drive/flight limits, then builds a
-    full itinerary for the best match."""
+    intent = extract_intent(req.query)
+    apply_intent_to_request_fields(intent, req)
 
-    def predicate(doc: Doc) -> bool:
-        if doc.travel_mode == "drive":
-            miles = haversine_miles(req.origin.lat, req.origin.lng, doc.lat, doc.lng)
-            return estimate_drive_hours(miles) <= req.max_drive_hours
-        if not req.allow_flight:
-            return False
-        return _est_flight_hours(req.origin.lat, req.origin.lng, doc) <= req.max_flight_hours
+    ui_prefs = [p.value for p in req.preferences]
+    if has_focus_query(intent):
+        ranking_prefs: list[str] = list(intent.preferences)
+    else:
+        ranking_prefs = list(dict.fromkeys([*intent.preferences, *ui_prefs]))
 
-    # Blend user profile into the query so semantic retrieval leans toward past likes.
-    query = req.query
+    profile_text = ""
+    memory_ctx = None
+    db = None
     if user is not None:
         from app.db import SessionLocal, get_engine
-        from app.services.personalization import rebuild_profile_text
+        from app.services.user_memory import retrieve_user_memories
 
         get_engine()
         assert SessionLocal is not None
         db = SessionLocal()
-        try:
-            profile = rebuild_profile_text(db, user)
-            if profile and "none yet" not in profile:
-                query = f"{req.query}\nUser preferences: {profile}"
-        finally:
+        memory_ctx = await retrieve_user_memories(db, user, req.query, k=5)
+        profile = memory_ctx.profile
+        profile_text = profile.profile_text
+        if not has_focus_query(intent) and not ranking_prefs and profile.activity_preferences:
+            ranking_prefs = list(profile.activity_preferences)
+        if intent.pace is None and profile.travel_pace:
+            intent.pace = profile.travel_pace
+
+    try:
+        rag = await rag_pipeline.run(
+            query=req.query,
+            origin_lat=req.origin.lat,
+            origin_lng=req.origin.lng,
+            max_drive_hours=req.max_drive_hours,
+            max_flight_hours=req.max_flight_hours,
+            allow_flight=req.allow_flight,
+            preferences=ranking_prefs,
+            profile_text=profile_text,
+            memory_ctx=memory_ctx,
+            k=8,
+            intent=intent,
+        )
+    finally:
+        if db is not None:
             db.close()
 
-    results = await retriever.retrieve(query, k=8, predicate=predicate)
-    if not results:
+    # Path B: free-text focus missed the curated corpus → nearby POI search.
+    use_poi = has_focus_query(intent) and not _corpus_has_focus_hit(rag.ranked, intent)
+    if use_poi:
+        pois = await search_nearby_pois(
+            query=req.query,
+            intent=intent,
+            origin_lat=req.origin.lat,
+            origin_lng=req.origin.lng,
+            max_drive_hours=req.max_drive_hours,
+            limit=8,
+        )
+        if pois:
+            alts = [p.name for p in pois[1:4]]
+            itinerary = await plan_for_poi(req, pois[0], alts)
+            candidate_payload = [p.to_candidate_dict() for p in pois]
+            meta = {
+                "intent": intent.to_dict(),
+                "validation": {
+                    "has_results": True,
+                    "search_path": "poi",
+                    "corpus_focus_miss": True,
+                },
+                "latency_ms": rag.latency_ms,
+                "context_blocks": [
+                    f"[poi] {p.name}: {p.highlight}" for p in pois[:3]
+                ],
+                "memory": rag.memory,
+                "fusion_weights": rag.fusion_weights,
+                "search_path": "poi",
+            }
+            return itinerary, candidate_payload, False, meta
+
+    if not rag.ranked:
         raise ValueError(
-            "No destinations match your search within range. Try widening drive/flight limits."
+            "No destinations match your search within range. Try widening drive/flight limits "
+            "or a more specific place name."
         )
 
-    if user is not None:
-        from app.db import SessionLocal, get_engine
-        from app.services.personalization import personalization_boost
+    # If focus missed and POI also empty, refuse park spam — return honest empty-ish error.
+    if has_focus_query(intent) and not _corpus_has_focus_hit(rag.ranked, intent):
+        raise ValueError(
+            f"Couldn't find places matching “{req.query}” near you. "
+            "Try a more specific name, or widen the drive-time limit."
+        )
 
-        get_engine()
-        assert SessionLocal is not None
-        db = SessionLocal()
-        try:
-            boosted = [
-                (doc, score + personalization_boost(db, user, doc.dest_name))
-                for doc, score in results
-            ]
-            boosted.sort(key=lambda x: x[1], reverse=True)
-            results = boosted
-        finally:
-            db.close()
-
-    top_doc = results[0][0]
+    top_doc = rag.ranked[0].doc
+    rag_ctx = _rag_context_text(rag.context_blocks)
+    profile_for_ground = profile_text
     if top_doc.travel_mode == "fly":
         itinerary = await plan_for_fly_destination(
             FlyPlanRequest(
@@ -444,7 +685,9 @@ async def search_destinations(
                 end_date=req.end_date,
                 preferences=req.preferences,
                 language=req.language,
-            )
+            ),
+            rag_context=rag_ctx,
+            profile_note=profile_for_ground,
         )
     else:
         itinerary = await plan_for_destination(
@@ -456,27 +699,37 @@ async def search_destinations(
                 end_date=req.end_date,
                 preferences=req.preferences,
                 language=req.language,
-            )
+            ),
+            rag_context=rag_ctx,
+            profile_note=profile_for_ground,
         )
 
     real_hours = await drive_durations_hours(
-        req.origin.lat, req.origin.lng, [(doc.lat, doc.lng) for doc, _ in results]
+        req.origin.lat,
+        req.origin.lng,
+        [(r.doc.lat, r.doc.lng) for r in rag.ranked],
     )
     candidate_payload: list[dict] = []
-    for idx, (doc, score) in enumerate(results):
-        miles = haversine_miles(req.origin.lat, req.origin.lng, doc.lat, doc.lng)
-        hours = estimate_drive_hours(miles)
+    for idx, ranked in enumerate(rag.ranked):
+        hours = estimate_drive_hours(
+            haversine_miles(req.origin.lat, req.origin.lng, ranked.doc.lat, ranked.doc.lng)
+        )
         if real_hours and idx < len(real_hours) and real_hours[idx] is not None:
             hours = real_hours[idx]
         candidate_payload.append(
-            {
-                "name": doc.dest_name,
-                "lat": doc.lat,
-                "lng": doc.lng,
-                "drive_time": format_duration(hours),
-                "drive_hours": round(hours, 2),
-                "score": round(score, 3),
-                "highlight": doc.highlight,
-            }
+            ranked.to_candidate_dict(
+                drive_time=format_duration(hours),
+                drive_hours=round(hours, 2),
+            )
         )
-    return itinerary, candidate_payload, retriever.semantic
+
+    meta = {
+        "intent": rag.intent.to_dict(),
+        "validation": {**(rag.validation or {}), "search_path": "corpus"},
+        "latency_ms": rag.latency_ms,
+        "context_blocks": rag.context_blocks,
+        "memory": rag.memory,
+        "fusion_weights": rag.fusion_weights,
+        "search_path": "corpus",
+    }
+    return itinerary, candidate_payload, rag.semantic, meta

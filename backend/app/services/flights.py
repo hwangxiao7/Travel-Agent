@@ -26,11 +26,11 @@ def estimate_flight(origin: Airport, dest: Airport) -> dict:
     }
 
 
+from app.services.query_understanding import preference_match_score
+
+
 def _pref_score(dest: FlyDestination, prefs: list[Preference]) -> float:
-    if not prefs:
-        return 1.0
-    overlap = len(set(dest.tags) & set(prefs))
-    return overlap / len(set(prefs))
+    return preference_match_score(dest.tags, [p.value for p in prefs])
 
 
 def fly_candidates(

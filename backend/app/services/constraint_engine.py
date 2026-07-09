@@ -7,6 +7,9 @@ from app.services.destinations import DESTINATIONS, Destination
 from app.services.geo import estimate_drive_hours, format_duration, haversine_miles
 
 
+from app.services.query_understanding import preference_match_score
+
+
 @dataclass
 class ScoredDestination:
     destination: Destination
@@ -17,12 +20,7 @@ class ScoredDestination:
 
 
 def _preference_score(dest: Destination, prefs: list[Preference]) -> float:
-    if not prefs:
-        return 1.0
-    dest_tags = set(dest.tags)
-    wanted = set(prefs)
-    overlap = len(dest_tags & wanted)
-    return overlap / len(wanted)
+    return preference_match_score(dest.tags, [p.value for p in prefs])
 
 
 def find_candidates(request: PlanRequest, limit: int = 5) -> list[ScoredDestination]:
@@ -37,7 +35,7 @@ def find_candidates(request: PlanRequest, limit: int = 5) -> list[ScoredDestinat
         if hours > max_hours:
             continue
         pref = _preference_score(dest, request.preferences)
-        # Prefer closer + better preference match
+        # Prefer closer + better preference match (equal-weight OR on chips)
         score = pref * 10 - hours * 0.5
         scored.append(
             ScoredDestination(

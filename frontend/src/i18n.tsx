@@ -31,7 +31,7 @@ const TRANSLATIONS: Record<Lang, Dict> = {
     'panel.generate': 'Generate plan',
     'panel.planning': 'Planning…',
     'panel.search': 'Describe your ideal trip (AI search)',
-    'panel.searchPlaceholder': 'e.g. quiet waterfalls and forest, good coffee nearby',
+    'panel.searchPlaceholder': 'e.g. snorkeling, paintball, whale watching, northern lights',
     'panel.searchBtn': '✨ Find with AI',
 
     'pref.national-park': 'National Park',
@@ -117,6 +117,7 @@ const TRANSLATIONS: Record<Lang, Dict> = {
 
     'cand.title': 'Options within range',
     'cand.selected': 'Selected',
+    'cand.why': 'Why',
 
     'fly.title': 'Fly-to destinations',
     'fly.loading': 'Finding flights…',
@@ -156,7 +157,7 @@ const TRANSLATIONS: Record<Lang, Dict> = {
     'panel.generate': '生成计划',
     'panel.planning': '规划中…',
     'panel.search': '用一句话描述你想要的旅行（AI 搜索）',
-    'panel.searchPlaceholder': '例如：安静的瀑布和森林，附近咖啡好喝',
+    'panel.searchPlaceholder': '例如：想浮潜、玩真人CS、观鲸、看极光',
     'panel.searchBtn': '✨ 用 AI 查找',
 
     'pref.national-park': '国家公园',
@@ -242,6 +243,7 @@ const TRANSLATIONS: Record<Lang, Dict> = {
 
     'cand.title': '范围内的可选地点',
     'cand.selected': '已选',
+    'cand.why': '推荐理由',
 
     'fly.title': '可飞往的目的地',
     'fly.loading': '正在查找航班…',

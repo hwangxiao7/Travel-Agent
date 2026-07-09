@@ -401,6 +401,30 @@
   color: #64748b;
 }
 
+.candidate-explain {
+  margin: 0.35rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: #475569;
+  text-align: left;
+}
+
+.candidate-scores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+}
+
+.candidate-scores span {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #0369a1;
+  background: #e0f2fe;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}
+
 .candidate-badge {
   display: inline-block;
   margin-top: 0.45rem;

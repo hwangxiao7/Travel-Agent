@@ -100,10 +100,21 @@ async def search(
     user: User | None = Depends(get_optional_user),
 ):
     try:
-        itinerary, candidates, semantic = await search_destinations(request, user=user)
+        itinerary, candidates, semantic, meta = await search_destinations(request, user=user)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return SearchResponse(itinerary=itinerary, candidates=candidates, semantic=semantic)
+    return SearchResponse(
+        itinerary=itinerary,
+        candidates=candidates,
+        semantic=semantic,
+        intent=meta.get("intent"),
+        validation=meta.get("validation"),
+        latency_ms=meta.get("latency_ms"),
+        context_blocks=meta.get("context_blocks") or [],
+        memory=meta.get("memory"),
+        fusion_weights=meta.get("fusion_weights"),
+        search_path=meta.get("search_path"),
+    )
 
 
 @app.post("/api/select", response_model=SelectResponse)
