@@ -481,6 +481,29 @@ struct ActivityIdea: Codable, Identifiable {
     var matchScore: Double = 0
     var blurb: String = ""
     var reason: String = ""
+
+    enum CodingKeys: String, CodingKey {
+        case key, name, nameEn, nameZh, tags, durationH, energy, cost
+        case companion, indoor, inSeason, matchScore, blurb, reason
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        key = try c.decode(String.self, forKey: .key)
+        name = try c.decode(String.self, forKey: .name)
+        nameEn = try c.decodeIfPresent(String.self, forKey: .nameEn) ?? ""
+        nameZh = try c.decodeIfPresent(String.self, forKey: .nameZh) ?? ""
+        tags = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
+        durationH = try c.decodeIfPresent(Double.self, forKey: .durationH) ?? 0
+        energy = try c.decodeIfPresent(String.self, forKey: .energy) ?? ""
+        cost = try c.decodeIfPresent(String.self, forKey: .cost) ?? ""
+        companion = try c.decodeIfPresent([String].self, forKey: .companion) ?? []
+        indoor = try c.decodeIfPresent(Bool.self, forKey: .indoor) ?? false
+        inSeason = try c.decodeIfPresent(Bool.self, forKey: .inSeason) ?? true
+        matchScore = try c.decodeIfPresent(Double.self, forKey: .matchScore) ?? 0
+        blurb = try c.decodeIfPresent(String.self, forKey: .blurb) ?? ""
+        reason = try c.decodeIfPresent(String.self, forKey: .reason) ?? ""
+    }
 }
 
 struct ActivitiesRequest: Codable {

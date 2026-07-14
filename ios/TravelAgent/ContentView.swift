@@ -244,7 +244,7 @@ struct ContentView: View {
                 )
             }
             .buttonStyle(CutePillButton())
-            .disabled(activities.isLoading)
+            // Allow re-tap even while loading (cancels via generation token).
 
             HStack(spacing: 10) {
                 activityPicker(
@@ -260,6 +260,12 @@ struct ContentView: View {
                     label: { activities.companionLabel($0) }
                 )
             }
+            .onChange(of: activities.energy) { _, _ in
+                Task { await activities.reloadForFilters() }
+            }
+            .onChange(of: activities.companion) { _, _ in
+                Task { await activities.reloadForFilters() }
+            }
 
             TextField(activities.moodPlaceholder, text: $activities.mood, axis: .vertical)
                 .textFieldStyle(.plain)
@@ -272,7 +278,7 @@ struct ContentView: View {
             Button {
                 Task { await activities.load() }
             } label: {
-                Text(activities.matchMoodLabel)
+                Text(activities.isLoading ? (zh ? "想点子中…" : "Thinking…") : activities.matchMoodLabel)
                     .font(Cute.rounded(14, .semibold))
                     .foregroundStyle(Cute.ink)
                     .frame(maxWidth: .infinity)
@@ -281,7 +287,15 @@ struct ContentView: View {
                     .overlay(RoundedRectangle(cornerRadius: 14).stroke(Cute.line, lineWidth: 2))
             }
             .buttonStyle(.plain)
-            .disabled(activities.isLoading)
+
+            if activities.isLoading && activities.ideas.isEmpty {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small).tint(Cute.pink)
+                    Text(zh ? "正在按你的筛选推项目…" : "Matching your filters…")
+                        .font(Cute.rounded(13, .medium))
+                        .foregroundStyle(Cute.ink.opacity(0.65))
+                }
+            }
 
             if let err = activities.errorMessage {
                 Text(err).font(Cute.rounded(13, .medium)).foregroundStyle(Color(hex: 0xD6336C))

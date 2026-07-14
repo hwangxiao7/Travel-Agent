@@ -19,14 +19,15 @@ final class ActivitiesViewModel {
     var venueErrorByKey: [String: String] = [:]
 
     private let api = APIClient.shared
+    private var loadGeneration = 0
 
     private var zh: Bool { Config.language == "zh" }
 
     var title: String { zh ? "今天干嘛" : "What to do today" }
     var hint: String {
         zh
-            ? "先推娱乐项目；点「附近去哪」再找具体地点。"
-            : "Activity ideas first — tap Nearby to find real places."
+            ? "选能量/和谁后再点推送；点「附近去哪」找具体地点。"
+            : "Set Energy / With, then push ideas. Tap Nearby for places."
     }
     var surpriseLabel: String { zh ? "随便推几个" : "Surprise me" }
     var moodPlaceholder: String {
@@ -63,11 +64,15 @@ final class ActivitiesViewModel {
         return zh ? "附近去哪" : "Nearby places"
     }
 
-    /// Cold-start (or mood) push. Call on appear and after Surprise me.
+    /// Cold-start / filter / mood push. Always sends current energy + companion.
     func load(interests: String? = nil) async {
+        loadGeneration += 1
+        let gen = loadGeneration
         isLoading = true
         errorMessage = nil
-        defer { isLoading = false }
+        defer {
+            if gen == loadGeneration { isLoading = false }
+        }
         do {
             let resp = try await api.activities(
                 ActivitiesRequest(
@@ -78,13 +83,26 @@ final class ActivitiesViewModel {
                     k: 8
                 )
             )
+            guard gen == loadGeneration else { return }
             ideas = resp.activities
             expandedKey = nil
+            venuesByKey = [:]
+            venueErrorByKey = [:]
+            if ideas.isEmpty {
+                errorMessage = zh ? "暂时没有合适的项目，试试换能量或同伴。" : "No matches — try different energy / with."
+            }
         } catch let err as APIError {
+            guard gen == loadGeneration else { return }
             errorMessage = err.detail
         } catch {
+            guard gen == loadGeneration else { return }
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// Changing Energy / With should immediately reshuffle ideas.
+    func reloadForFilters() async {
+        await load(interests: mood.isEmpty ? "" : mood)
     }
 
     func toggleVenues(for idea: ActivityIdea, origin: Location) async {

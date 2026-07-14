@@ -1,0 +1,6 @@
+/* Reset only — visual theme lives in App.css (iOS Cute parity). */
+html,
+body,
+#root {
+  min-height: 100%;
+}

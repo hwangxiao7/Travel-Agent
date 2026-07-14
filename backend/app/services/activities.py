@@ -60,47 +60,81 @@ def _season_mult(a: Activity, month: int) -> float:
 
 
 def _context_mult(a: Activity, *, companion: str, energy: str, budget: str, weather: str) -> float:
+    """Hard-ish filters so Energy / With actually reshape the list."""
     m = 1.0
-    if companion and companion not in a.companion:
-        m *= 0.65
-    if energy and energy in _ENERGY and _ENERGY[a.energy] > _ENERGY[energy] + 0:
-        # user wants calmer than this activity → soft down-weight
-        if _ENERGY[a.energy] - _ENERGY[energy] >= 1:
-            m *= 0.7
+    if companion:
+        if companion in a.companion:
+            m *= 1.25
+        else:
+            m *= 0.12  # nearly exclude incompatible companion
+    if energy and energy in _ENERGY:
+        diff = _ENERGY[a.energy] - _ENERGY[energy]
+        # 0 exact · +1 a bit more intense · +2 way more · negative = calmer than asked
+        if diff == 0:
+            m *= 1.3
+        elif diff == 1:
+            m *= 0.4
+        elif diff >= 2:
+            m *= 0.08
+        elif diff == -1:
+            m *= 0.5
+        else:
+            m *= 0.15
     if budget and budget in _COST and _COST[a.cost] > _COST[budget]:
-        m *= 0.6
-    # Weather: rain/cold → favor indoor, penalize outdoor.
+        m *= 0.35
     w = weather.lower()
     if any(k in w for k in ("rain", "storm", "snow", "wet", "雨")):
         m *= 1.15 if a.indoor else 0.5
     return m
 
 
-def _cold_start_base(a: Activity) -> float:
-    """Default appeal when there is no taste and no ask.
+def _cold_start_base(a: Activity, *, energy: str = "", companion: str = "") -> float:
+    """Default appeal when there is no free-text ask.
 
-    Prefer approachable, low-friction weekend ideas (chill / mid energy, $,
-    half-day) over adrenaline / $$$ / overnight — so catalog order alone
-    doesn't dump skydiving + paragliding on every cold-start user."""
-    energy_w = {"low": 1.0, "medium": 0.92, "high": 0.55}.get(a.energy, 0.8)
+    With no energy pick → prefer chill/accessible. With energy/companion set →
+    prefer matching activities so filters aren't drowned by the chill prior."""
+    if energy and energy in _ENERGY:
+        diff = abs(_ENERGY[a.energy] - _ENERGY[energy])
+        energy_w = {0: 1.0, 1: 0.5, 2: 0.15}.get(diff, 0.2)
+    else:
+        energy_w = {"low": 1.0, "medium": 0.92, "high": 0.55}.get(a.energy, 0.8)
+
     cost_w = {"$": 1.0, "$$": 0.9, "$$$": 0.5}.get(a.cost, 0.8)
     if a.duration_h <= 3.5:
         dur_w = 1.0
     elif a.duration_h <= 5.0:
         dur_w = 0.88
     else:
-        dur_w = 0.55  # overnight / full-day projects
+        dur_w = 0.55
 
     tags = set(a.tags)
     chill_hits = len(tags & _CHILL_TAGS)
     thrill_hits = len(tags & _THRILL_TAGS)
     vibe_w = 1.0 + 0.04 * chill_hits
-    if thrill_hits and chill_hits == 0:
-        vibe_w *= 0.62
-    elif thrill_hits:
-        vibe_w *= 0.85
+    if not energy:  # only soft-suppress thrill when user didn't ask for energy
+        if thrill_hits and chill_hits == 0:
+            vibe_w *= 0.62
+        elif thrill_hits:
+            vibe_w *= 0.85
+    elif energy == "high":
+        vibe_w *= 1.0 + 0.08 * thrill_hits
 
-    return 0.55 * energy_w + 0.25 * cost_w + 0.15 * dur_w + 0.05 * vibe_w
+    companion_w = 1.0
+    if companion:
+        companion_w = 1.15 if companion in a.companion else 0.35
+
+    return (0.5 * energy_w + 0.2 * cost_w + 0.15 * dur_w + 0.05 * vibe_w) * companion_w
+
+
+_ACT_VECS: list | None = None
+
+
+async def _activity_vectors():
+    """Cache catalog embeddings — Surprise me must stay snappy on repeat taps."""
+    global _ACT_VECS
+    if _ACT_VECS is None:
+        _ACT_VECS = await embed_texts([a.text() for a in ACTIVITIES])
+    return _ACT_VECS
 
 
 def _bucket(a: Activity) -> str:
@@ -145,10 +179,26 @@ def _diversify(
     return picked
 
 
-def _reason(a: Activity, in_season: bool, by_taste: bool, zh: bool) -> str:
+def _reason(
+    a: Activity,
+    in_season: bool,
+    by_taste: bool,
+    zh: bool,
+    *,
+    energy: str = "",
+    companion: str = "",
+) -> str:
     if zh:
         bits = [a.blurb] if a.blurb else []
         bits.append(f"约 {a.duration_h:g} 小时")
+        if energy and a.energy == energy:
+            bits.append({"low": "轻松档", "medium": "适中档", "high": "嗨能量"}.get(energy, energy))
+        if companion and companion in a.companion:
+            bits.append(
+                {"solo": "适合独自", "date": "适合约会", "family": "适合亲子", "friends": "适合朋友"}.get(
+                    companion, companion
+                )
+            )
         if in_season:
             bits.append("正当季")
         if by_taste:
@@ -156,6 +206,10 @@ def _reason(a: Activity, in_season: bool, by_taste: bool, zh: bool) -> str:
         return "；".join(bits) + "。"
     bits = [a.blurb] if a.blurb else []
     bits.append(f"~{a.duration_h:g}h")
+    if energy and a.energy == energy:
+        bits.append(f"{energy} energy")
+    if companion and companion in a.companion:
+        bits.append(f"good for {companion}")
     if in_season:
         bits.append("in season")
     if by_taste:
@@ -175,7 +229,8 @@ async def recommend_activities(
     language: str = "en",
     k: int = 8,
 ) -> list[ActivitySuggestion]:
-    # Taste vector (who you are) + English-ified ask (what you feel like now).
+    # Free-text ask (optional) + taste vector (optional). Empty ask still respects
+    # energy/companion filters via prior + context multipliers.
     taste_vec = None
     if db is not None and user is not None:
         try:
@@ -185,44 +240,45 @@ async def recommend_activities(
         except Exception:
             taste_vec = None
 
-    en_query = ""
-    if interests.strip():
+    ask = interests.strip()
+    qvec = None
+    if ask:
         from app.services.discovery import _english_query
 
-        en_query = await _english_query(interests)
+        en_query = await _english_query(ask)
+        qvec = await embed_query(en_query or ask)
 
-    qvec = await embed_query(en_query or interests.strip()) if interests.strip() else None
-    cold_start = qvec is None and taste_vec is None
-    act_vecs = (
-        await embed_texts([a.text() for a in ACTIVITIES])
-        if not cold_start
-        else None
-    )
+    act_vecs = None
+    if qvec is not None or taste_vec is not None:
+        act_vecs = await _activity_vectors()
 
     zh = language.lower().startswith("zh")
     month = datetime.utcnow().month
+    has_filters = bool(energy or companion or budget)
     scored: list[tuple[float, Activity, bool]] = []
     for i, a in enumerate(ACTIVITIES):
         by_taste = False
+        prior = _cold_start_base(a, energy=energy, companion=companion)
         if act_vecs is not None:
             sim_q = _cosine(qvec, act_vecs[i]) if qvec is not None else None
             sim_t = _cosine(taste_vec, act_vecs[i]) if taste_vec is not None else None
             if sim_q is not None and sim_t is not None:
-                base = 0.6 * sim_q + 0.4 * sim_t
+                base = 0.55 * sim_q + 0.25 * sim_t + 0.2 * prior
+            elif sim_q is not None:
+                base = 0.75 * sim_q + 0.25 * prior
             elif sim_t is not None:
-                base, by_taste = sim_t, True
+                # No free-text: filters/prior lead; taste is a soft nudge.
+                base, by_taste = 0.55 * prior + 0.45 * sim_t, True
             else:
-                base = sim_q or 0.0
+                base = prior
         else:
-            # Zero-signal cold start: approachable defaults, not catalog order.
-            base = _cold_start_base(a)
+            base = prior
         season = _season_mult(a, month)
         ctx = _context_mult(a, companion=companion, energy=energy, budget=budget, weather=weather)
         scored.append((base * season * ctx, a, by_taste))
 
     scored.sort(key=lambda t: t[0], reverse=True)
-    # Always diversify a bit; cold start is stricter (max 2 per vibe bucket).
-    top = _diversify(scored, k, max_per_bucket=2 if cold_start else 3)
+    top = _diversify(scored, k, max_per_bucket=3 if has_filters else 2)
 
     out: list[ActivitySuggestion] = []
     for score, a, by_taste in top:
@@ -242,7 +298,9 @@ async def recommend_activities(
                 in_season=in_season,
                 match_score=round(score, 3),
                 blurb=a.blurb,
-                reason=_reason(a, in_season, by_taste, zh),
+                reason=_reason(
+                    a, in_season, by_taste, zh, energy=energy, companion=companion
+                ),
             )
         )
     return out

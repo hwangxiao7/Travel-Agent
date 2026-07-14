@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     # Trending-spot ingestion: cross-validation + freshness knobs.
     trending_radius_miles: int = 40  # spots kept within this range of a destination
     trending_stale_days: int = 45  # spots not re-seen within N days drop off serving
-    cors_origins: str = "http://localhost:5173"
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     # Account / JWT (change jwt_secret in production).
     jwt_secret: str = "dev-change-me-spontaneous-travel"
     jwt_expire_hours: int = 168  # 7 days

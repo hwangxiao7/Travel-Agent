@@ -48,6 +48,7 @@ from app.models.schemas import (
     SocialTextImportRequest,
 )
 from app.routers.account import router as account_router
+from app.routers.beta import router as beta_router
 from app.routers.taste import router as taste_router
 from app.services.airports import airport_by_iata, nearest_airport
 from app.services.destinations import DESTINATIONS
@@ -82,6 +83,7 @@ app.add_middleware(
 setup_observability(app)
 app.include_router(account_router)
 app.include_router(taste_router)
+app.include_router(beta_router)
 
 
 @app.get("/api/health")
