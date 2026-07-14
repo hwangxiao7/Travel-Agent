@@ -242,9 +242,11 @@ async def create_plan(
 
         profile_note = ""
         memory_ctx = None
+        persona = None
         db = None
         if user is not None:
             from app.db import SessionLocal, get_engine
+            from app.services.persona import get_or_build_persona
             from app.services.personalization import rebuild_profile_text
             from app.services.user_memory import retrieve_user_memories
 
@@ -255,6 +257,7 @@ async def create_plan(
                 profile_note = rebuild_profile_text(db, user)
                 synth = _synthetic_plan_query(request, profile_note)
                 memory_ctx = await retrieve_user_memories(db, user, synth, k=5)
+                persona = get_or_build_persona(db, user)
             finally:
                 # Keep session closed; memory_ctx is in-memory after retrieve.
                 db.close()
@@ -274,6 +277,7 @@ async def create_plan(
             memory_ctx=memory_ctx,
             k=max(8, len(candidates)),
             start_date=request.start_date,
+            persona=persona,
         )
         by_name = {c.destination.name: c for c in candidates}
         reranked: list[ScoredDestination] = []
@@ -635,15 +639,18 @@ async def search_destinations(
 
     profile_text = ""
     memory_ctx = None
+    persona = None
     db = None
     if user is not None:
         from app.db import SessionLocal, get_engine
+        from app.services.persona import get_or_build_persona
         from app.services.user_memory import retrieve_user_memories
 
         get_engine()
         assert SessionLocal is not None
         db = SessionLocal()
         memory_ctx = await retrieve_user_memories(db, user, req.query, k=5)
+        persona = get_or_build_persona(db, user)
         profile = memory_ctx.profile
         profile_text = profile.profile_text
         if not has_focus_query(intent) and not ranking_prefs and profile.activity_preferences:
@@ -665,6 +672,7 @@ async def search_destinations(
             k=8,
             intent=intent,
             start_date=req.start_date,
+            persona=persona,
         )
     finally:
         if db is not None:
@@ -703,22 +711,41 @@ async def search_destinations(
             return itinerary, candidate_payload, False, meta
 
     if not rag.ranked:
-        raise ValueError(
-            "No destinations match your search within range. Try widening drive/flight limits "
-            "or a more specific place name."
+        # A vague idea must never dead-end: widen the range once and retry so we
+        # still surface the closest options rather than erroring out.
+        rag = await rag_pipeline.run(
+            query=req.query,
+            origin_lat=req.origin.lat,
+            origin_lng=req.origin.lng,
+            max_drive_hours=max(req.max_drive_hours, 8.0),
+            max_flight_hours=max(req.max_flight_hours, 6.0),
+            allow_flight=True,
+            preferences=ranking_prefs,
+            profile_text=profile_text,
+            memory_ctx=memory_ctx,
+            k=8,
+            intent=intent,
+            start_date=req.start_date,
+            persona=persona,
         )
+        if not rag.ranked:
+            raise ValueError("No destinations available yet — try widening your range.")
 
-    # If focus missed and POI also empty, refuse park spam — return honest empty-ish error.
-    if has_focus_query(intent) and not _corpus_has_focus_hit(rag.ranked, intent):
-        raise ValueError(
-            f"Couldn't find places matching “{req.query}” near you. "
-            "Try a more specific name, or widen the drive-time limit."
-        )
+    # Free-text "idea" queries (e.g. "somewhere with forest and creek") must NOT
+    # dead-end just because they don't hit a keyword or a Nominatim place name.
+    # When there's no strong focus hit, fall through to the closest semantic
+    # matches and tell the user they're approximate. Ranking already prevents
+    # irrelevant park-spam, so the top result is the best-fitting real place.
+    approx = has_focus_query(intent) and not _corpus_has_focus_hit(rag.ranked, intent)
 
     top_doc = rag.ranked[0].doc
     rag_ctx = _rag_context_text(rag.context_blocks)
     profile_for_ground = profile_text
     framing = _framing_note(intent)
+    if approx:
+        framing = (
+            (framing + " ") if framing else ""
+        ) + "No exact match for the request; present these as the closest nearby options and say so briefly."
     if top_doc.travel_mode == "fly":
         itinerary = await plan_for_fly_destination(
             FlyPlanRequest(
@@ -769,13 +796,14 @@ async def search_destinations(
             )
         )
 
+    search_path = "corpus-approx" if approx else "corpus"
     meta = {
         "intent": rag.intent.to_dict(),
-        "validation": {**(rag.validation or {}), "search_path": "corpus"},
+        "validation": {**(rag.validation or {}), "search_path": search_path, "approximate": approx},
         "latency_ms": rag.latency_ms,
         "context_blocks": rag.context_blocks,
         "memory": rag.memory,
         "fusion_weights": rag.fusion_weights,
-        "search_path": "corpus",
+        "search_path": search_path,
     }
     return itinerary, candidate_payload, rag.semantic, meta

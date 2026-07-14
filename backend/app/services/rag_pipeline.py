@@ -272,6 +272,7 @@ class RAGPipeline:
         weights: tuple[float, float, float] = (0.70, 0.15, 0.15),
         weather: WeatherCondition | None = None,
         start_date: str = "",
+        persona=None,
     ) -> ScoreBreakdown:
         matched_terms = sorted(qtok & doc_tokens)
         kw = len(matched_terms) / (len(qtok) or 1)
@@ -346,9 +347,16 @@ class RAGPipeline:
             + 0.10 * tag
         )
 
+        # Persona bias: how well this doc matches the user's taste axes (小 nudge).
+        persona_delta = 0.0
+        if persona is not None:
+            from app.services.persona import persona_bias
+
+            persona_delta = persona_bias(persona, tags=doc.tags, text=doc.text)
+
         w_s, w_p, w_e = weights
         push = personalization
-        final = w_s * search + w_p * push + w_e * explore - neg
+        final = w_s * search + w_p * push + w_e * explore + persona_delta - neg
 
         scores = ScoreBreakdown(
             semantic_score=sem,
@@ -386,6 +394,7 @@ class RAGPipeline:
         k: int = 5,
         intent: TravelIntent | None = None,
         start_date: str = "",
+        persona=None,
     ) -> RAGResult:
         from app.observability import atraced, rag_latency_ms
         from app.services.user_memory import (
@@ -496,6 +505,7 @@ class RAGPipeline:
                     weights=weights,
                     weather=weather_cond,
                     start_date=start_date,
+                    persona=persona,
                 )
                 ranked.append(RankedDestination(doc=doc, scores=scores))
 

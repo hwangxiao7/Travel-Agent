@@ -223,3 +223,85 @@ struct APIError: Codable, Error, LocalizedError {
     var detail: String
     var errorDescription: String? { detail }
 }
+
+// MARK: - Account / auth
+
+struct UserAccount: Codable, Equatable {
+    var id: Int
+    var email: String
+    var displayName: String = ""
+    var contact: String = ""
+    var homeLabel: String = ""
+    var homeLat: Double = 0
+    var homeLng: Double = 0
+    var defaultPrefs: [Preference] = []
+}
+
+struct AuthResponse: Codable {
+    var accessToken: String
+    var tokenType: String = "bearer"
+    var user: UserAccount
+}
+
+struct MyReviewsResponse: Codable {
+    var reviews: [ReviewItem]
+}
+
+struct ReviewItem: Codable, Identifiable {
+    var id: Int
+    var placeName: String
+    var destination: String = ""
+    var rating: Int
+    var comment: String = ""
+    var author: String = ""
+    var createdAt: String = ""
+    var updatedAt: String = ""
+}
+
+struct TripItem: Codable, Identifiable {
+    var id: Int
+    var destination: String
+    var destinationLat: Double = 0
+    var destinationLng: Double = 0
+    var travelMode: String = "drive"
+    var startDate: String = ""
+    var endDate: String = ""
+    var summary: String = ""
+    var places: [String] = []
+    var createdAt: String = ""
+}
+
+// MARK: - Persona
+
+struct PersonaAxis: Codable, Identifiable {
+    var id: String { key }
+    var key: String
+    var low: String
+    var high: String
+    var score: Double
+}
+
+struct Persona: Codable {
+    var scores: [String: Double] = [:]
+    var axes: [PersonaAxis] = []
+    var confidence: Double = 0
+    var typeCode: String = ""
+    var title: String = ""
+    var blurb: String = ""
+    var hasQuiz: Bool = false
+}
+
+struct QuizOption: Codable, Identifiable {
+    var id: String
+    var label: String
+}
+
+struct QuizQuestion: Codable, Identifiable {
+    var id: String
+    var q: String
+    var options: [QuizOption]
+}
+
+struct QuizResponse: Codable {
+    var questions: [QuizQuestion]
+}

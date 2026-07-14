@@ -2,6 +2,8 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var vm = TripViewModel()
+    @State private var auth = AuthStore()
+    @State private var showAccount = false
 
     var body: some View {
         ZStack {
@@ -44,6 +46,13 @@ struct ContentView: View {
             }
         }
         .task { await vm.bootstrapDemoIfRequested() }
+        .task {
+            await auth.bootstrap()
+            if ProcessInfo.processInfo.environment["SHOW_ACCOUNT"] != nil {
+                showAccount = true
+            }
+        }
+        .sheet(isPresented: $showAccount) { AccountView(auth: auth) }
     }
 
     // MARK: Header
@@ -59,11 +68,33 @@ struct ContentView: View {
                     .foregroundStyle(Cute.ink.opacity(0.72))
             }
             Spacer(minLength: 0)
-            if let ui = UIImage(named: "mascot") {
-                Image(uiImage: ui)
-                    .resizable().scaledToFit()
-                    .frame(width: 72, height: 72)
+            Button {
+                showAccount = true
+            } label: {
+                ZStack(alignment: .bottomTrailing) {
+                    Group {
+                        if let ui = UIImage(named: "mascot") {
+                            Image(uiImage: ui).resizable().scaledToFill()
+                        } else {
+                            Image(systemName: "person.fill").font(.system(size: 30)).foregroundStyle(Cute.ink)
+                        }
+                    }
+                    .frame(width: 60, height: 60)
+                    .background(Circle().fill(.white))
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(Cute.ink, lineWidth: 2.5))
+                    // Account badge (login state).
+                    Image(systemName: auth.isLoggedIn ? "checkmark.circle.fill" : "plus.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundStyle(auth.isLoggedIn ? Cute.mint : Cute.pink)
+                        .background(Circle().fill(.white))
+                        .overlay(Circle().stroke(Cute.ink, lineWidth: 1.5))
+                        .offset(x: 3, y: 3)
+                }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Account and settings")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)

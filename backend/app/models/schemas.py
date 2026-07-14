@@ -53,6 +53,10 @@ class Place(BaseModel):
     note: str = ""  # cuisine or short descriptor
     recommended: bool = False  # notable (has wikidata/wikipedia tag)
     trending: bool = False  # surfaced from social media (TikTok travel guides)
+    # Experience layer (open-vocab): what kind of experience this is, for
+    # persona matching (e.g. ["outdoor", "foraging", "hands-on", "water"]).
+    experience_tags: list[str] = Field(default_factory=list)
+    blurb: str = ""  # short neutral experience descriptor (derived, not copied)
 
 
 class Event(BaseModel):
@@ -179,6 +183,65 @@ class SocialTextImportRequest(BaseModel):
     language: str = "en"
     platform: str = "xiaohongshu"
     persist: bool = True
+
+
+class DiscoverRequest(BaseModel):
+    """Proactive experience push: match fresh trending spots to the user's taste."""
+
+    origin: Location
+    preferences: list[Preference] = Field(default_factory=list)
+    interests: str = ""  # free-text persona hint, e.g. "outdoor, foraging, hands-on"
+    radius_miles: int = 40
+    language: str = "en"
+    k: int = 8
+
+
+class ExperiencePush(BaseModel):
+    name: str
+    lat: float
+    lng: float
+    kind: Literal["food", "fun"] = "fun"
+    blurb: str = ""
+    experience_tags: list[str] = Field(default_factory=list)
+    platforms: list[str] = Field(default_factory=list)
+    distance_miles: float = 0.0
+    freshness_days: int = 0
+    match_score: float = 0.0
+    reason: str = ""
+
+
+class DiscoverResponse(BaseModel):
+    pushes: list[ExperiencePush] = Field(default_factory=list)
+    persona_tags: list[str] = Field(default_factory=list)  # transparency
+
+
+class TasteSnippetOut(BaseModel):
+    id: int
+    text: str
+    source: str = ""
+    polarity: float = 1.0
+
+
+class TasteProfileOut(BaseModel):
+    likes: list[str] = Field(default_factory=list)  # what we think you enjoy
+    dislikes: list[str] = Field(default_factory=list)
+    n_signals: int = 0
+    snippets: list[TasteSnippetOut] = Field(default_factory=list)  # editable, stored ones
+
+
+class TasteAddRequest(BaseModel):
+    text: str
+    polarity: float = 1.0  # +1 like / -1 dislike
+
+
+class ExperienceFeedbackRequest(BaseModel):
+    name: str
+    verdict: str  # like | dislike | crowded | again
+    destination: str = ""
+
+
+class OkResponse(BaseModel):
+    ok: bool = True
 
 
 class FlyDestinationsRequest(BaseModel):
@@ -315,6 +378,11 @@ class UserOut(BaseModel):
     id: int
     email: str
     display_name: str
+    contact: str = ""
+    home_label: str = ""
+    home_lat: float = 0.0
+    home_lng: float = 0.0
+    default_prefs: list[Preference] = Field(default_factory=list)
 
 
 class AuthResponse(BaseModel):
@@ -390,3 +458,68 @@ class FeedbackOut(BaseModel):
     ok: bool
     event_type: str
     destination: str
+
+
+# --- Account management + persona ---
+
+
+class ProfileUpdateRequest(BaseModel):
+    display_name: str | None = Field(default=None, max_length=120)
+    contact: str | None = Field(default=None, max_length=120)
+    home_label: str | None = Field(default=None, max_length=200)
+    home_lat: float | None = None
+    home_lng: float | None = None
+    default_prefs: list[Preference] | None = None
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=6, max_length=72)
+
+
+class DeleteAccountRequest(BaseModel):
+    password: str
+
+
+class MyReviewsResponse(BaseModel):
+    reviews: list[ReviewOut]
+
+
+class PersonaAxisOut(BaseModel):
+    key: str
+    low: str
+    high: str
+    score: float
+
+
+class PersonaOut(BaseModel):
+    scores: dict[str, float]
+    axes: list[PersonaAxisOut]
+    confidence: float
+    type_code: str
+    title: str
+    blurb: str
+    has_quiz: bool
+
+
+class PersonaQuizOption(BaseModel):
+    id: str
+    label: str
+
+
+class PersonaQuizQuestion(BaseModel):
+    id: str
+    q: str
+    options: list[PersonaQuizOption]
+
+
+class PersonaQuizResponse(BaseModel):
+    questions: list[PersonaQuizQuestion]
+
+
+class PersonaQuizSubmit(BaseModel):
+    answers: dict[str, str]  # {question_id: option_id}
+
+
+class PersonaUpdate(BaseModel):
+    scores: dict[str, float]  # {axis_key: 0-100} — manual slider tuning

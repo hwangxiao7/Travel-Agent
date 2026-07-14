@@ -33,6 +33,14 @@ class User(Base):
     display_name: Mapped[str] = mapped_column(String(120), default="")
     password_hash: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # Profile / account management.
+    contact: Mapped[str] = mapped_column(String(120), default="")  # phone / handle (optional)
+    home_label: Mapped[str] = mapped_column(String(200), default="")
+    home_lat: Mapped[float] = mapped_column(Float, default=0.0)
+    home_lng: Mapped[float] = mapped_column(Float, default=0.0)
+    default_prefs: Mapped[str] = mapped_column(Text, default="[]")  # JSON list of Preference values
+    # Bumped on password change / logout-all → invalidates older JWTs.
+    token_version: Mapped[int] = mapped_column(Integer, default=0)
 
     trips: Mapped[list[Trip]] = relationship(back_populates="user", cascade="all, delete-orphan")
     reviews: Mapped[list[PlaceReview]] = relationship(
@@ -119,8 +127,58 @@ class TrendingSpot(Base):
     # Provenance only — the platform names, not their content.
     platforms: Mapped[str] = mapped_column(String(120), default="")  # csv: tiktok,instagram
     mention_count: Mapped[int] = mapped_column(Integer, default=1)
+    # Experience layer for persona matching (open-vocab, derived facts).
+    experience_tags: Mapped[str] = mapped_column(String(240), default="")  # csv
+    blurb: Mapped[str] = mapped_column(String(280), default="")  # neutral descriptor
     first_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     last_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class TasteSnippet(Base):
+    """A persistent, free-form taste signal for one user.
+
+    The "我知道你喜欢什么" store. Each snippet is natural-language ("likes quiet
+    coffee places", "avoids crowds", from a typed interest / import / feedback),
+    NOT a fixed keyword/tag from a maintained vocabulary — taste is understood
+    via embeddings, not enumerated. Snippets accrue over time and decay, so the
+    profile evolves as the user keeps using the product.
+    """
+
+    __tablename__ = "taste_snippets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    text: Mapped[str] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(String(24), default="")  # interest/import/feedback/review
+    weight: Mapped[float] = mapped_column(Float, default=1.0)
+    polarity: Mapped[float] = mapped_column(Float, default=1.0)  # +like / -dislike
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class TravelPersona(Base):
+    """Abstract travel-taste persona (MBTI-style axes), one per user.
+
+    Not a list of concrete checkboxes — six bipolar axes scored 0–100 (50 neutral),
+    derived from behavior (feedback / reviews / trips) plus an optional onboarding
+    quiz. A short type code + title + blurb are generated from the dominant axes.
+    Axes bias ranking so recommendations match the user's character.
+    """
+
+    __tablename__ = "travel_personas"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True, index=True)
+    # Bipolar axis scores (0–100, 50 neutral). See services/persona.py for poles.
+    indoor_outdoor: Mapped[float] = mapped_column(Float, default=50.0)
+    calm_adventurous: Mapped[float] = mapped_column(Float, default=50.0)
+    culture_nature: Mapped[float] = mapped_column(Float, default=50.0)
+    quiet_social: Mapped[float] = mapped_column(Float, default=50.0)
+    leisurely_active: Mapped[float] = mapped_column(Float, default=50.0)
+    popular_novel: Mapped[float] = mapped_column(Float, default=50.0)
+    # Confidence 0–1: how much evidence backs the scores (few events → low).
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    quiz_json: Mapped[str] = mapped_column(Text, default="{}")  # raw quiz answers, if taken
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 def _database_url() -> str:
@@ -144,9 +202,44 @@ def get_engine():
     return _engine
 
 
+def _ensure_sqlite_columns(engine) -> None:
+    """Lightweight dev migration: add newly-introduced columns to existing tables.
+
+    `create_all` never ALTERs existing tables, so a dev SQLite file created before
+    a column was added would be missing it. Add the trending_spots experience
+    columns if absent (no-op when already present or on non-sqlite backends)."""
+    if not str(engine.url).startswith("sqlite"):
+        return
+    from sqlalchemy import text
+
+    per_table = {
+        "trending_spots": {
+            "experience_tags": "VARCHAR(240) DEFAULT ''",
+            "blurb": "VARCHAR(280) DEFAULT ''",
+        },
+        "users": {
+            "contact": "VARCHAR(120) DEFAULT ''",
+            "home_label": "VARCHAR(200) DEFAULT ''",
+            "home_lat": "FLOAT DEFAULT 0.0",
+            "home_lng": "FLOAT DEFAULT 0.0",
+            "default_prefs": "TEXT DEFAULT '[]'",
+            "token_version": "INTEGER DEFAULT 0",
+        },
+    }
+    with engine.begin() as conn:
+        for table, wanted in per_table.items():
+            existing = {row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))}
+            if not existing:
+                continue  # table not created yet; create_all handles it fresh
+            for col, ddl in wanted.items():
+                if col not in existing:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
+
+
 def init_db() -> None:
     engine = get_engine()
     Base.metadata.create_all(bind=engine)
+    _ensure_sqlite_columns(engine)
 
 
 def get_db():

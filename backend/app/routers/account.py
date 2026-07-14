@@ -16,11 +16,19 @@ from app.auth import (
 from app.db import FeedbackEvent, PlaceReview, Trip, User, get_db, place_key
 from app.models.schemas import (
     AuthResponse,
+    ChangePasswordRequest,
+    DeleteAccountRequest,
     FeedbackCreate,
     FeedbackOut,
     LoginRequest,
+    MyReviewsResponse,
+    PersonaOut,
+    PersonaQuizResponse,
+    PersonaQuizSubmit,
+    PersonaUpdate,
     PlaceReviewsResponse,
     ProfileOut,
+    ProfileUpdateRequest,
     RegisterRequest,
     ReviewCreate,
     ReviewOut,
@@ -29,12 +37,32 @@ from app.models.schemas import (
     UserOut,
 )
 from app.services.personalization import public_reviews_for_place, rebuild_profile_text
+from app.services.persona import (
+    QUIZ,
+    get_or_build_persona,
+    quiz_answers_to_leans,
+    save_persona,
+    set_manual_scores,
+)
 
 router = APIRouter(prefix="/api", tags=["account"])
 
 
 def _user_out(u: User) -> UserOut:
-    return UserOut(id=u.id, email=u.email, display_name=u.display_name or "")
+    try:
+        prefs = json.loads(getattr(u, "default_prefs", "[]") or "[]")
+    except json.JSONDecodeError:
+        prefs = []
+    return UserOut(
+        id=u.id,
+        email=u.email,
+        display_name=u.display_name or "",
+        contact=getattr(u, "contact", "") or "",
+        home_label=getattr(u, "home_label", "") or "",
+        home_lat=getattr(u, "home_lat", 0.0) or 0.0,
+        home_lng=getattr(u, "home_lng", 0.0) or 0.0,
+        default_prefs=[p for p in prefs if isinstance(p, str)],
+    )
 
 
 def _trip_out(t: Trip) -> TripOut:
@@ -85,7 +113,7 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
-    token = create_access_token(user.id, user.email)
+    token = create_access_token(user.id, user.email, user.token_version or 0)
     return AuthResponse(access_token=token, user=_user_out(user))
 
 
@@ -95,7 +123,7 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
     user = db.scalar(select(User).where(User.email == email))
     if user is None or not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    token = create_access_token(user.id, user.email)
+    token = create_access_token(user.id, user.email, user.token_version or 0)
     return AuthResponse(access_token=token, user=_user_out(user))
 
 
@@ -114,6 +142,117 @@ def my_profile(user: User = Depends(get_current_user), db: Session = Depends(get
         trip_count=len(trips),
         review_count=len(reviews),
     )
+
+
+@router.patch("/me", response_model=UserOut)
+def update_profile(
+    body: ProfileUpdateRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Update display name / contact / home base / default preferences."""
+    if body.display_name is not None:
+        user.display_name = body.display_name.strip()[:120]
+    if body.contact is not None:
+        user.contact = body.contact.strip()[:120]
+    if body.home_label is not None:
+        user.home_label = body.home_label.strip()[:200]
+    if body.home_lat is not None:
+        user.home_lat = body.home_lat
+    if body.home_lng is not None:
+        user.home_lng = body.home_lng
+    if body.default_prefs is not None:
+        user.default_prefs = json.dumps([p.value for p in body.default_prefs])
+    db.commit()
+    db.refresh(user)
+    return _user_out(user)
+
+
+@router.post("/auth/change-password", response_model=AuthResponse)
+def change_password(
+    body: ChangePasswordRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not verify_password(body.current_password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+    user.password_hash = hash_password(body.new_password)
+    user.token_version = (user.token_version or 0) + 1  # invalidate old sessions
+    db.commit()
+    db.refresh(user)
+    token = create_access_token(user.id, user.email, user.token_version)
+    return AuthResponse(access_token=token, user=_user_out(user))
+
+
+@router.post("/auth/logout-all")
+def logout_all(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Invalidate every existing token for this user (server-side logout)."""
+    user.token_version = (user.token_version or 0) + 1
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/me")
+def delete_account(
+    body: DeleteAccountRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not verify_password(body.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Password is incorrect")
+    db.delete(user)  # cascade removes trips + reviews
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/me/reviews", response_model=MyReviewsResponse)
+def my_reviews(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    rows = db.scalars(
+        select(PlaceReview).where(PlaceReview.user_id == user.id).order_by(PlaceReview.updated_at.desc())
+    ).all()
+    return MyReviewsResponse(reviews=[_review_out(r) for r in rows])
+
+
+@router.get("/me/persona", response_model=PersonaOut)
+def get_persona(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return PersonaOut(**get_or_build_persona(db, user).to_dict())
+
+
+@router.post("/me/persona/recompute", response_model=PersonaOut)
+def recompute_persona(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return PersonaOut(**get_or_build_persona(db, user, recompute=True).to_dict())
+
+
+@router.patch("/me/persona", response_model=PersonaOut)
+def update_persona(
+    body: PersonaUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Manually tune persona axis scores (slider drag) → persisted, biases ranking."""
+    return PersonaOut(**set_manual_scores(db, user, body.scores).to_dict())
+
+
+@router.get("/me/persona/quiz", response_model=PersonaQuizResponse)
+def persona_quiz():
+    return PersonaQuizResponse(questions=QUIZ)
+
+
+@router.post("/me/persona/quiz", response_model=PersonaOut)
+def submit_persona_quiz(
+    body: PersonaQuizSubmit,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    leans = quiz_answers_to_leans(body.answers)
+    persona = get_or_build_persona(db, user, recompute=True)
+    persona.quiz = leans
+    # Re-derive with quiz anchors folded in.
+    from app.services.persona import compute_persona
+    save_persona(db, user, persona)  # persist quiz first
+    fresh = compute_persona(db, user)
+    save_persona(db, user, fresh)
+    return PersonaOut(**fresh.to_dict())
 
 
 @router.post("/trips", response_model=TripOut)

@@ -9,13 +9,16 @@
 /* Begin PBXBuildFile section */
 		07181978C3E79932DFCB4A62 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9856631D0EC856F1C16F6F1B /* Assets.xcassets */; };
 		1BD3F5DC3D7BE12C0E8D9756 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29D3FAF2EFC18735C4112E90 /* APIClient.swift */; };
+		2D4B371EF332DD9709D1E12A /* AuthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 061BB2BF5E5F713DBB1D1BF7 /* AuthStore.swift */; };
 		300B94916C3104AD839A3F1F /* TripViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F736FA023B653E595699DF08 /* TripViewModel.swift */; };
 		4079FD00C3A235A224AAA547 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = D44D910B6152A313C072AD7F /* Theme.swift */; };
+		432C4D1025038DAADE65DF5E /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BDFA03B60491907A534037B /* Keychain.swift */; };
 		48652BA40D67CB1AF88BA5A8 /* icon-weekend.png in Resources */ = {isa = PBXBuildFile; fileRef = 7F9A928868E9346E2DDFD5BE /* icon-weekend.png */; };
 		5B205CDF9A77CCAF44F527ED /* Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AAC682B7957E4773943CC9C /* Config.swift */; };
 		63F060A320C8A86A518E8E30 /* icon-national-park.png in Resources */ = {isa = PBXBuildFile; fileRef = 006D9C6E52D4679908FBB570 /* icon-national-park.png */; };
 		8B852876F779A1A78B4DCE41 /* icon-city-walk.png in Resources */ = {isa = PBXBuildFile; fileRef = F9B859D9207AA96C7FFF523E /* icon-city-walk.png */; };
 		9375EC79C617D851CADC81B4 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18527D142EB5A8A5816B8A2D /* Models.swift */; };
+		965FBED27DF96CC99B5C5DE6 /* AccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8130AE9E9C0084F8830DD82A /* AccountView.swift */; };
 		BE7CA7057063D23D1895F337 /* icon-hiking.png in Resources */ = {isa = PBXBuildFile; fileRef = F267CA09565786D4BB7A4881 /* icon-hiking.png */; };
 		D9794C1BA456806B7F90BF0D /* TravelAgentApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EED0EF789AFA961454E94F8 /* TravelAgentApp.swift */; };
 		E396DC3E0B8C61891895A736 /* icon-daytrip.png in Resources */ = {isa = PBXBuildFile; fileRef = 254966301C03BFF5A75C072E /* icon-daytrip.png */; };
@@ -28,12 +31,15 @@
 /* Begin PBXFileReference section */
 		006D9C6E52D4679908FBB570 /* icon-national-park.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-national-park.png"; sourceTree = "<group>"; };
 		02D98F7C4F7DDB7F995AE750 /* mascot.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = mascot.png; sourceTree = "<group>"; };
+		061BB2BF5E5F713DBB1D1BF7 /* AuthStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthStore.swift; sourceTree = "<group>"; };
 		18527D142EB5A8A5816B8A2D /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		254966301C03BFF5A75C072E /* icon-daytrip.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-daytrip.png"; sourceTree = "<group>"; };
 		29D3FAF2EFC18735C4112E90 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		2F62CB82ACEDB298C80CB1C4 /* icon-beach.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-beach.png"; sourceTree = "<group>"; };
+		3BDFA03B60491907A534037B /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		6AAC682B7957E4773943CC9C /* Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Config.swift; sourceTree = "<group>"; };
 		7F9A928868E9346E2DDFD5BE /* icon-weekend.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-weekend.png"; sourceTree = "<group>"; };
+		8130AE9E9C0084F8830DD82A /* AccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountView.swift; sourceTree = "<group>"; };
 		8EED0EF789AFA961454E94F8 /* TravelAgentApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TravelAgentApp.swift; sourceTree = "<group>"; };
 		9856631D0EC856F1C16F6F1B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A182663E1FA6A3E1C5F03DDC /* icon-forest.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-forest.png"; sourceTree = "<group>"; };
@@ -73,11 +79,14 @@
 		862DD4360205241FF48BA46C /* TravelAgent */ = {
 			isa = PBXGroup;
 			children = (
+				8130AE9E9C0084F8830DD82A /* AccountView.swift */,
 				29D3FAF2EFC18735C4112E90 /* APIClient.swift */,
 				9856631D0EC856F1C16F6F1B /* Assets.xcassets */,
+				061BB2BF5E5F713DBB1D1BF7 /* AuthStore.swift */,
 				6AAC682B7957E4773943CC9C /* Config.swift */,
 				B579C165DB357FA6EF213AD7 /* ContentView.swift */,
 				B7663F8109CFE6043A467D2F /* Info.plist */,
+				3BDFA03B60491907A534037B /* Keychain.swift */,
 				18527D142EB5A8A5816B8A2D /* Models.swift */,
 				D44D910B6152A313C072AD7F /* Theme.swift */,
 				8EED0EF789AFA961454E94F8 /* TravelAgentApp.swift */,
@@ -171,8 +180,11 @@
 			buildActionMask = 2147483647;
 			files = (
 				1BD3F5DC3D7BE12C0E8D9756 /* APIClient.swift in Sources */,
+				965FBED27DF96CC99B5C5DE6 /* AccountView.swift in Sources */,
+				2D4B371EF332DD9709D1E12A /* AuthStore.swift in Sources */,
 				5B205CDF9A77CCAF44F527ED /* Config.swift in Sources */,
 				F4C03FDCE67266CC19079E68 /* ContentView.swift in Sources */,
+				432C4D1025038DAADE65DF5E /* Keychain.swift in Sources */,
 				9375EC79C617D851CADC81B4 /* Models.swift in Sources */,
 				4079FD00C3A235A224AAA547 /* Theme.swift in Sources */,
 				D9794C1BA456806B7F90BF0D /* TravelAgentApp.swift in Sources */,

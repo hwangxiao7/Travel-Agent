@@ -48,23 +48,95 @@ actor APIClient {
         return decoded.results.map { Location(lat: $0.lat, lng: $0.lng, label: $0.label ?? "") }
     }
 
+    // MARK: Account / auth endpoints
+
+    func register(email: String, password: String, displayName: String) async throws -> AuthResponse {
+        struct Body: Encodable { let email: String; let password: String; let displayName: String }
+        return try await request("POST", "/auth/register",
+                                 body: Body(email: email, password: password, displayName: displayName))
+    }
+
+    func login(email: String, password: String) async throws -> AuthResponse {
+        struct Body: Encodable { let email: String; let password: String }
+        return try await request("POST", "/auth/login", body: Body(email: email, password: password))
+    }
+
+    func me() async throws -> UserAccount {
+        try await request("GET", "/auth/me", body: Empty())
+    }
+
+    func updateProfile(displayName: String?, contact: String?, homeLabel: String?,
+                       homeLat: Double?, homeLng: Double?, defaultPrefs: [Preference]?) async throws -> UserAccount {
+        struct Body: Encodable {
+            let displayName: String?; let contact: String?; let homeLabel: String?
+            let homeLat: Double?; let homeLng: Double?; let defaultPrefs: [Preference]?
+        }
+        return try await request("PATCH", "/me", body: Body(displayName: displayName, contact: contact,
+            homeLabel: homeLabel, homeLat: homeLat, homeLng: homeLng, defaultPrefs: defaultPrefs))
+    }
+
+    func changePassword(current: String, new: String) async throws -> AuthResponse {
+        struct Body: Encodable { let currentPassword: String; let newPassword: String }
+        return try await request("POST", "/auth/change-password", body: Body(currentPassword: current, newPassword: new))
+    }
+
+    func deleteAccount(password: String) async throws {
+        struct Body: Encodable { let password: String }
+        let _: OKResponse = try await request("DELETE", "/me", body: Body(password: password))
+    }
+
+    func myTrips() async throws -> [TripItem] {
+        try await request("GET", "/trips", body: Empty())
+    }
+
+    func myReviews() async throws -> MyReviewsResponse {
+        try await request("GET", "/me/reviews", body: Empty())
+    }
+
+    func persona() async throws -> Persona {
+        try await request("GET", "/me/persona", body: Empty())
+    }
+
+    func personaQuiz() async throws -> QuizResponse {
+        try await request("GET", "/me/persona/quiz", body: Empty())
+    }
+
+    func submitPersonaQuiz(_ answers: [String: String]) async throws -> Persona {
+        struct Body: Encodable { let answers: [String: String] }
+        return try await request("POST", "/me/persona/quiz", body: Body(answers: answers))
+    }
+
+    func updatePersona(scores: [String: Double]) async throws -> Persona {
+        struct Body: Encodable { let scores: [String: Double] }
+        return try await request("PATCH", "/me/persona", body: Body(scores: scores))
+    }
+
     // MARK: Core
 
-    private func post<Body: Encodable, Out: Decodable>(
+    private struct Empty: Encodable {}
+    private struct OKResponse: Decodable { let ok: Bool }
+
+    private func post<Body: Encodable, Out: Decodable>(_ path: String, body: Body) async throws -> Out {
+        try await request("POST", path, body: body)
+    }
+
+    private func request<Body: Encodable, Out: Decodable>(
+        _ method: String,
         _ path: String,
         body: Body
     ) async throws -> Out {
         let url = Config.baseURL.appendingPathComponent(Config.apiPrefix + path)
         var req = URLRequest(url: url)
-        req.httpMethod = "POST"
+        req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let token {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         // Search / plan can take 10-30s (LLM + external APIs). Give it room.
         req.timeoutInterval = 60
-        req.httpBody = try Self.encoder.encode(body)
-
+        if !(body is Empty) {
+            req.httpBody = try Self.encoder.encode(body)
+        }
         let (data, resp) = try await session.data(for: req)
         try Self.check(resp, data)
         return try Self.decoder.decode(Out.self, from: data)
