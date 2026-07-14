@@ -75,6 +75,54 @@ class PlaceReview(Base):
     user: Mapped[User] = relationship(back_populates="reviews")
 
 
+class FeedbackEvent(Base):
+    """Implicit + explicit user behavior (design doc §14).
+
+    Events: CLICK / SAVE / SKIP / VISIT / RATE / SHARE. Aggregated into a
+    per-destination affinity that feeds the 推 (push) ranking signal.
+    """
+
+    __tablename__ = "feedback_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    event_type: Mapped[str] = mapped_column(String(16), index=True)  # click/save/skip/visit/rate/share
+    place_key: Mapped[str] = mapped_column(String(220), index=True, default="")
+    place_name: Mapped[str] = mapped_column(String(200), default="")
+    destination: Mapped[str] = mapped_column(String(200), default="", index=True)
+    value: Mapped[float] = mapped_column(Float, default=0.0)  # e.g. rating 1-5 for RATE
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class TrendingSpot(Base):
+    """A real place distilled from social media, verified against OSM.
+
+    LEGAL FIREWALL: stores only facts (name, coords, category) + provenance
+    (which platforms mentioned it) + freshness timestamps. It deliberately does
+    NOT store post text, images, captions, thumbnails, or author handles — those
+    are copyrighted expression / personal data. Original posts, if shown at all,
+    are rendered live via official oEmbed, never persisted here.
+    """
+
+    __tablename__ = "trending_spots"
+    __table_args__ = (UniqueConstraint("dest_key", "place_key", name="uq_dest_place"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    dest_key: Mapped[str] = mapped_column(String(220), index=True)  # normalized destination
+    dest_name: Mapped[str] = mapped_column(String(200), default="")
+    place_key: Mapped[str] = mapped_column(String(220), index=True)  # normalized spot name
+    name: Mapped[str] = mapped_column(String(200))
+    category: Mapped[str] = mapped_column(String(40), default="viral")
+    kind: Mapped[str] = mapped_column(String(8), default="fun")  # food | fun
+    lat: Mapped[float] = mapped_column(Float, default=0.0)
+    lng: Mapped[float] = mapped_column(Float, default=0.0)
+    # Provenance only — the platform names, not their content.
+    platforms: Mapped[str] = mapped_column(String(120), default="")  # csv: tiktok,instagram
+    mention_count: Mapped[int] = mapped_column(Integer, default=1)
+    first_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
 def _database_url() -> str:
     return settings.database_url or _DEFAULT_DB
 

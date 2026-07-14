@@ -9,6 +9,7 @@ from typing import Any, Callable
 from app.knowledge.corpus import Doc, build_corpus, context_for
 from app.services.embeddings import Vector, embed_query, embed_texts
 from app.services.geo import estimate_drive_hours, haversine_miles
+from app.services.signals import WeatherCondition, signal_provider
 from app.services.query_understanding import (
     TravelIntent,
     extract_intent,
@@ -96,6 +97,9 @@ class ScoreBreakdown:
     search_score: float = 0.0  # 搜 relevance (sem+kw+tag+scenery+dist)
     tag_score: float = 0.0
     scenery_score: float = 0.0
+    weather_score: float = 0.0       # doc §10: weather compatibility
+    popularity_score: float = 0.0    # doc §10: popularity
+    freshness_score: float = 0.0     # doc §10: freshness / seasonality
     negative_penalty: float = 0.0
     rerank_score: float | None = None
     final_score: float = 0.0
@@ -121,6 +125,10 @@ class RankedDestination:
             "drive_hours": drive_hours,
             "score": round(self.scores.final_score, 3),
             "highlight": self.doc.highlight,
+            # Unified Activity fields (doc §7).
+            "activity_type": "destination",
+            "source": "fly" if self.doc.travel_mode == "fly" else "corpus",
+            "semantic_tags": list(self.doc.tags),
             "matched_query_terms": self.scores.matched_query_terms,
             "matched_tags": self.scores.matched_tags,
             "semantic_score": round(self.scores.semantic_score, 3),
@@ -131,6 +139,9 @@ class RankedDestination:
             "search_score": round(self.scores.search_score, 3),
             "tag_score": round(self.scores.tag_score, 3),
             "scenery_score": round(self.scores.scenery_score, 3),
+            "weather_score": round(self.scores.weather_score, 3),
+            "popularity_score": round(self.scores.popularity_score, 3),
+            "freshness_score": round(self.scores.freshness_score, 3),
             "negative_penalty": round(self.scores.negative_penalty, 3),
             "final_score": round(self.scores.final_score, 3),
             "explanation": self.scores.explanation,
@@ -180,6 +191,12 @@ def _explain(scores: ScoreBreakdown, doc: Doc, intent: TravelIntent) -> str:
         bits.append("new for you")
     if scores.distance_score > 0.5 and not _wants_aurora(intent):
         bits.append("nearby")
+    if scores.weather_score >= 0.85:
+        bits.append("great for today's weather")
+    if scores.popularity_score >= 0.75:
+        bits.append("popular pick")
+    if scores.freshness_score >= 0.7:
+        bits.append("in season now")
     if not bits and doc.highlight:
         return doc.highlight
     if not bits:
@@ -253,6 +270,8 @@ class RAGPipeline:
         personalization: float,
         explore: float = 0.5,
         weights: tuple[float, float, float] = (0.70, 0.15, 0.15),
+        weather: WeatherCondition | None = None,
+        start_date: str = "",
     ) -> ScoreBreakdown:
         matched_terms = sorted(qtok & doc_tokens)
         kw = len(matched_terms) / (len(qtok) or 1)
@@ -261,6 +280,11 @@ class RAGPipeline:
         miles = haversine_miles(origin_lat, origin_lng, doc.lat, doc.lng)
         hours = estimate_drive_hours(miles) if doc.travel_mode == "drive" else miles / 500.0 + 0.5
         dist = max(0.0, 1.0 - hours / 8.0)
+
+        # Doc §10 extra signals (pluggable source; heuristic by default).
+        wx = signal_provider.weather_compat(text=doc.text, tags=doc.tags, weather=weather)
+        pop = signal_provider.popularity(text=doc.text, tags=doc.tags)
+        fresh = signal_provider.freshness(text=doc.text, tags=doc.tags, start_date=start_date)
 
         focus = _wants_focus(intent)
         matched_tags = sorted(set(doc.tags) & set(intent.preferences)) if intent.preferences else []
@@ -295,20 +319,32 @@ class RAGPipeline:
             # Weak semantic match — don't let UI chips invent a "hit".
             neg += 0.45
 
-        # 搜: relevance head (before push/explore fusion)
+        # Intent-match head: how well the destination matches what the user asked.
+        # (Combines semantic + keyword + scenery/focus; falls back to kw when no embeddings.)
         if aurora:
-            search = 0.30 * sem + 0.10 * kw + 0.05 * dist + 0.05 * tag + 0.40 * scenery
+            intent_match = 0.55 * sem + 0.15 * kw + 0.30 * scenery
             if qvec is None:
-                search = 0.20 * kw + 0.05 * dist + 0.10 * tag + 0.50 * scenery
+                intent_match = 0.30 * kw + 0.70 * scenery
         elif focus:
-            # Semantic dominates for open-vocab free text.
-            search = 0.55 * sem + 0.10 * kw + 0.15 * dist + 0.05 * tag + 0.10 * scenery
+            intent_match = 0.80 * sem + 0.12 * kw + 0.08 * scenery
             if qvec is None:
-                search = 0.25 * kw + 0.15 * dist + 0.05 * tag + 0.45 * scenery
+                intent_match = 0.55 * kw + 0.45 * scenery
         else:
-            search = 0.45 * sem + 0.15 * kw + 0.15 * dist + 0.10 * tag + 0.10 * scenery
+            intent_match = 0.65 * sem + 0.20 * kw + 0.15 * scenery
             if qvec is None:
-                search = 0.35 * kw + 0.20 * dist + 0.20 * tag + 0.15 * scenery
+                intent_match = 0.65 * kw + 0.35 * scenery
+
+        # 搜: relevance head — design-doc §10 weighted blend.
+        #   0.35 intent + 0.20 distance + 0.15 weather + 0.10 popularity
+        #   + 0.10 freshness + 0.10 preference(tag)
+        search = (
+            0.35 * intent_match
+            + 0.20 * dist
+            + 0.15 * wx
+            + 0.10 * pop
+            + 0.10 * fresh
+            + 0.10 * tag
+        )
 
         w_s, w_p, w_e = weights
         push = personalization
@@ -323,6 +359,9 @@ class RAGPipeline:
             search_score=search,
             tag_score=tag,
             scenery_score=scenery,
+            weather_score=wx,
+            popularity_score=pop,
+            freshness_score=fresh,
             negative_penalty=neg,
             final_score=final,
             matched_query_terms=matched_terms[:8],
@@ -346,6 +385,7 @@ class RAGPipeline:
         memory_ctx=None,
         k: int = 5,
         intent: TravelIntent | None = None,
+        start_date: str = "",
     ) -> RAGResult:
         from app.observability import atraced, rag_latency_ms
         from app.services.user_memory import (
@@ -420,6 +460,17 @@ class RAGPipeline:
             )
             w_map = {"search": weights[0], "push": weights[1], "explore": weights[2]}
 
+            # One best-effort weather read for the origin region → weather signal.
+            weather_cond: WeatherCondition | None = None
+            try:
+                from app.services.llm import fetch_weather_note
+                from app.services.signals import parse_weather_note
+
+                note = await fetch_weather_note(origin_lat, origin_lng)
+                weather_cond = parse_weather_note(note or "")
+            except Exception:
+                weather_cond = None
+
             ranked: list[RankedDestination] = []
             for i in idxs:
                 doc = self._docs[i]
@@ -443,6 +494,8 @@ class RAGPipeline:
                     pers,
                     explore=explore,
                     weights=weights,
+                    weather=weather_cond,
+                    start_date=start_date,
                 )
                 ranked.append(RankedDestination(doc=doc, scores=scores))
 

@@ -13,9 +13,11 @@ from app.auth import (
     hash_password,
     verify_password,
 )
-from app.db import PlaceReview, Trip, User, get_db, place_key
+from app.db import FeedbackEvent, PlaceReview, Trip, User, get_db, place_key
 from app.models.schemas import (
     AuthResponse,
+    FeedbackCreate,
+    FeedbackOut,
     LoginRequest,
     PlaceReviewsResponse,
     ProfileOut,
@@ -135,6 +137,27 @@ def save_trip(
     db.commit()
     db.refresh(trip)
     return _trip_out(trip)
+
+
+@router.post("/feedback", response_model=FeedbackOut)
+def record_feedback(
+    body: FeedbackCreate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Record a behavior event (design doc §14) → feeds personalized ranking."""
+    name = body.place_name.strip()
+    event = FeedbackEvent(
+        user_id=user.id,
+        event_type=body.event_type,
+        place_key=place_key(name) if name else "",
+        place_name=name,
+        destination=body.destination.strip(),
+        value=body.value,
+    )
+    db.add(event)
+    db.commit()
+    return FeedbackOut(ok=True, event_type=body.event_type, destination=body.destination.strip())
 
 
 @router.get("/trips", response_model=list[TripOut])

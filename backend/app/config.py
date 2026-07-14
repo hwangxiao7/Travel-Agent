@@ -32,6 +32,24 @@ class Settings(BaseSettings):
     rapidapi_flights_host: str = "flights-sky.p.rapidapi.com"
     # TikTok travel-guide scraping (subscribe to the API on RapidAPI first).
     rapidapi_tiktok_host: str = "tiktok-scraper7.p.rapidapi.com"
+    # Xiaohongshu / RED note scraping (subscribe to a RED scraper on RapidAPI).
+    # Blank = disabled; reuses the same RAPIDAPI_KEY.
+    rapidapi_xhs_host: str = ""
+    # Instagram post scraping (subscribe to an IG scraper on RapidAPI).
+    # Blank = disabled; reuses the same RAPIDAPI_KEY.
+    rapidapi_instagram_host: str = ""
+    # Reddit (AUTHORIZED source — official API). Create a "script"/"web" app at
+    # https://www.reddit.com/prefs/apps and use application-only OAuth.
+    reddit_client_id: str = ""
+    reddit_client_secret: str = ""
+    reddit_user_agent: str = "local-discovery/0.1 by u/yourname"
+    # Compliance gate: RapidAPI TikTok/IG/RED scrapers are unauthorized third-party
+    # scraping. OFF by default so App Store / production never depends on them.
+    # Turn on ONLY for local dev experiments.
+    enable_social_scraping: bool = False
+    # Trending-spot ingestion: cross-validation + freshness knobs.
+    trending_radius_miles: int = 40  # spots kept within this range of a destination
+    trending_stale_days: int = 45  # spots not re-seen within N days drop off serving
     cors_origins: str = "http://localhost:5173"
     # Account / JWT (change jwt_secret in production).
     jwt_secret: str = "dev-change-me-spontaneous-travel"

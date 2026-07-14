@@ -28,6 +28,10 @@ class PoiHit:
     search_query: str = ""
 
     def to_candidate_dict(self) -> dict:
+        from app.services.signals import signal_provider
+
+        blob = f"{self.name} {self.highlight} {self.search_query}"
+        tags = [t for t in self.search_query.lower().split() if len(t) > 2][:4]
         return {
             "name": self.name,
             "lat": self.lat,
@@ -37,7 +41,12 @@ class PoiHit:
             "score": round(self.score, 3),
             "highlight": self.highlight,
             "final_score": round(self.score, 3),
+            # Unified Activity fields (doc §7).
+            "activity_type": "poi",
             "source": "poi",
+            "semantic_tags": tags,
+            "popularity_score": round(signal_provider.popularity(text=blob, tags=tuple(tags)), 3),
+            "freshness_score": round(signal_provider.freshness(text=blob, tags=tuple(tags)), 3),
         }
 
 

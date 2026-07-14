@@ -110,6 +110,7 @@ async def generate_grounded_days(
     language: str,
     profile_note: str = "",
     rag_context: str = "",
+    framing_note: str = "",
 ) -> list[DayPlan] | None:
     """Ask the LLM to write day-by-day activities grounded in retrieved facts.
 
@@ -133,11 +134,14 @@ async def generate_grounded_days(
         f"Local events: {_events_line(events)}\n"
         f"Weather: {weather_note}\n"
         f"Traveler preferences: {', '.join(preferences) or 'general outdoor'}\n"
+        f"{('Trip vibe: ' + framing_note + chr(10)) if framing_note else ''}"
         f"{('Traveler history: ' + profile_note + chr(10)) if profile_note else ''}\n"
         "Rules:\n"
         "- Prefer real place names from the retrieved facts above; do not invent landmarks.\n"
         "- When traveler history / memory is present, bias activities toward liked themes "
         "and avoid past dislikes when possible.\n"
+        "- Match the trip vibe (mood / energy / company) when set: low energy → fewer, "
+        "relaxed stops; romantic → cozy scenic pairs; friends → lively shared activities.\n"
         "- Include at least one nearby food stop per day when available.\n"
         "- 3 to 5 timed activities per day, realistic ordering and durations.\n"
         "- Adapt to the weather note when relevant.\n"

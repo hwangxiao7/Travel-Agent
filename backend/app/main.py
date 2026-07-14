@@ -35,6 +35,9 @@ from app.models.schemas import (
     SearchResponse,
     SelectRequest,
     SelectResponse,
+    SocialImportRequest,
+    SocialImportResponse,
+    SocialTextImportRequest,
 )
 from app.routers.account import router as account_router
 from app.services.airports import airport_by_iata, nearest_airport
@@ -197,6 +200,68 @@ async def flights_calendar(request: CalendarRequest):
         cheapest_day=summary.get("cheapest_day"),
         days=summary.get("days", []),
     )
+
+
+@app.post("/api/social/import", response_model=SocialImportResponse)
+async def social_import(request: SocialImportRequest):
+    """Compliant TikTok/social path: user submits post links, we distill facts.
+
+    No scraping: each link is resolved via the platform's official oEmbed. We
+    persist only verified place facts; the official embeds are returned for
+    live display and never stored."""
+    from app.services.social import import_from_links
+    from app.services.trending_store import upsert_spots
+
+    if not request.urls:
+        raise HTTPException(status_code=422, detail="No links submitted")
+
+    async with atraced("/api/social/import"):
+        located, embeds = await import_from_links(
+            request.urls, request.lat, request.lng, request.dest_name, request.language
+        )
+        created = updated = 0
+        if request.persist and request.dest_name and located:
+            created, updated = upsert_spots(request.dest_name, located)
+        return SocialImportResponse(
+            imported_links=len(embeds),
+            spots=[place for place, _sources in located],
+            embeds=embeds,
+            created=created,
+            updated=updated,
+        )
+
+
+@app.post("/api/social/import-text", response_model=SocialImportResponse)
+async def social_import_text(request: SocialTextImportRequest):
+    """Compliant path for platforms without oEmbed (e.g. Xiaohongshu/RED).
+
+    The user pastes note text they copied themselves. We extract + verify place
+    facts and persist only those; the pasted text is never stored."""
+    from app.services.social import import_from_text
+    from app.services.trending_store import upsert_spots
+
+    if not request.texts:
+        raise HTTPException(status_code=422, detail="No text submitted")
+
+    async with atraced("/api/social/import-text"):
+        located = await import_from_text(
+            request.texts,
+            request.lat,
+            request.lng,
+            request.dest_name,
+            request.language,
+            request.platform,
+        )
+        created = updated = 0
+        if request.persist and request.dest_name and located:
+            created, updated = upsert_spots(request.dest_name, located)
+        return SocialImportResponse(
+            imported_links=len(request.texts),
+            spots=[place for place, _sources in located],
+            embeds=[],
+            created=created,
+            updated=updated,
+        )
 
 
 @app.post("/api/chat", response_model=ChatResponse)

@@ -945,3 +945,263 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ============================================================
+   🌸 Cute theme (hand-drawn / sticker)
+   Appended override layer — remove this block to revert.
+   ============================================================ */
+
+:root {
+  --cute-ink: #4b3f47;          /* soft plum for text + doodle outlines */
+  --cute-cream: #fffaf6;        /* card surface */
+  --cute-pink: #ff8fab;         /* primary */
+  --cute-pink-soft: #ffe0e8;
+  --cute-mint: #7ad0c1;
+  --cute-mint-soft: #e2f7f1;
+  --cute-butter: #ffd166;
+  --cute-sky: #8ecae6;
+  --cute-line: #e7c9d3;         /* soft border */
+  /* hand-drawn wobble radius */
+  --wobble: 22px 20px 24px 18px / 20px 24px 18px 22px;
+  --wobble-lg: 30px 26px 32px 24px / 26px 32px 24px 30px;
+  --sticker: 3px 3px 0 var(--cute-ink);
+}
+
+/* doodly dotted paper background */
+body {
+  background:
+    radial-gradient(circle at 12% 18%, #ffe9f0 0, transparent 42%),
+    radial-gradient(circle at 88% 8%, #e3f6ff 0, transparent 40%),
+    radial-gradient(circle at 78% 92%, #eafaf3 0, transparent 42%),
+    #fff7f2;
+  background-attachment: fixed;
+}
+
+.topbar {
+  background: linear-gradient(135deg, #ffb3c6, #ff8fab 45%, #ffc3a0);
+  color: var(--cute-ink);
+  border-bottom: 3px solid var(--cute-ink);
+  border-radius: 0 0 28px 28px;
+  box-shadow: 0 4px 0 rgb(75 63 71 / 12%);
+}
+
+.topbar h1 {
+  font-family: var(--font-hand);
+  letter-spacing: 0.5px;
+  text-shadow: 2px 2px 0 rgb(255 255 255 / 55%);
+}
+
+.topbar h1::after {
+  content: ' ✈️';
+}
+
+.lang-switch {
+  background: rgb(255 255 255 / 45%);
+  border: 2px solid var(--cute-ink);
+  border-radius: 999px;
+}
+
+.lang-switch button {
+  color: var(--cute-ink);
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.lang-switch button.active {
+  background: #fff;
+  color: var(--cute-pink);
+}
+
+/* sticker cards */
+.panel {
+  background: var(--cute-cream);
+  border: 2.5px solid var(--cute-ink);
+  border-radius: var(--wobble-lg);
+  box-shadow: var(--sticker);
+}
+
+.panel h2 {
+  font-family: var(--font-hand);
+  font-size: 1.15rem;
+  color: var(--cute-ink);
+}
+
+.panel h2::before {
+  margin-right: 0.35rem;
+}
+
+.candidate-list h2::before { content: '📍'; }
+.map-wrap h2::before { content: '🗺️'; }
+
+/* inputs → soft rounded */
+.field span {
+  color: #7a6b73;
+}
+
+.field input[type='text'],
+.field input[type='number'],
+.field input[type='date'],
+.address-search input,
+.chat-input-row input,
+.review-form textarea {
+  border: 2px solid var(--cute-line);
+  border-radius: 14px;
+  background: #fff;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.field input:focus,
+.address-search input:focus,
+.chat-input-row input:focus {
+  outline: none;
+  border-color: var(--cute-pink);
+  box-shadow: 0 0 0 3px var(--cute-pink-soft);
+}
+
+/* primary buttons → bouncy sticker pills */
+.primary,
+.chat-input-row button,
+.fly-search-btn {
+  background: var(--cute-pink);
+  color: #fff;
+  border: 2.5px solid var(--cute-ink);
+  border-radius: 999px;
+  box-shadow: var(--sticker);
+  font-family: var(--font-hand);
+  font-size: 1.05rem;
+  letter-spacing: 0.3px;
+  transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.15s;
+}
+
+.primary:hover:not(:disabled),
+.chat-input-row button:hover:not(:disabled) {
+  background: #ff779a;
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 var(--cute-ink);
+}
+
+.primary:active:not(:disabled),
+.chat-input-row button:active:not(:disabled) {
+  transform: translate(3px, 3px);
+  box-shadow: 0 0 0 var(--cute-ink);
+}
+
+/* segmented + ghost */
+.segmented button,
+.ghost {
+  border: 2px solid var(--cute-line);
+  border-radius: 14px;
+  background: #fff;
+  color: var(--cute-ink);
+}
+
+.segmented button.active {
+  background: var(--cute-mint);
+  border-color: var(--cute-ink);
+  color: var(--cute-ink);
+  box-shadow: 2px 2px 0 var(--cute-ink);
+}
+
+/* candy tag pills */
+.tag {
+  border: 2px solid var(--cute-line);
+  border-radius: 999px;
+  background: #fff;
+  color: #7a6b73;
+  font-weight: 600;
+  transition: transform 0.1s;
+}
+
+.tag:hover {
+  transform: rotate(-2deg) scale(1.03);
+}
+
+.tag.active {
+  background: var(--cute-pink-soft);
+  border-color: var(--cute-pink);
+  color: #d6336c;
+  box-shadow: 2px 2px 0 var(--cute-pink);
+}
+
+/* candidate + fly sticker cards with playful tilt */
+.candidate-card,
+.fly-card {
+  border: 2.5px solid var(--cute-ink);
+  border-radius: var(--wobble);
+  background: var(--cute-cream);
+  box-shadow: var(--sticker);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.candidate-card:hover:not(:disabled),
+.fly-card:hover {
+  border-color: var(--cute-ink);
+  transform: rotate(-1.2deg) translate(-1px, -2px);
+  box-shadow: 5px 5px 0 var(--cute-pink);
+}
+
+.candidate-card.active,
+.fly-card.active {
+  background: var(--cute-mint-soft);
+  border-color: var(--cute-mint);
+  box-shadow: 4px 4px 0 var(--cute-mint);
+}
+
+.candidate-time { color: #e0699a; }
+.candidate-badge { color: #12a594; }
+.candidate-badge::before { content: '🌟 '; }
+
+/* map + itinerary cards */
+.map-container {
+  border: 2.5px solid var(--cute-ink);
+  border-radius: var(--wobble-lg);
+  box-shadow: var(--sticker);
+}
+
+.itin-actions button,
+.itin-actions .btn-link,
+.cal-chip,
+.review-form button,
+.review-toggle {
+  border: 2px solid var(--cute-line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--cute-ink);
+}
+
+.itin-actions button:hover,
+.itin-actions .btn-link:hover {
+  background: var(--cute-pink-soft);
+  border-color: var(--cute-pink);
+}
+
+/* error banner → gentle */
+.error-banner {
+  background: #fff0f3;
+  color: #d6336c;
+  border-bottom: 2px dashed #ffb3c6;
+  border-radius: 0 0 16px 16px;
+}
+
+/* soft float animation for the selected itinerary panel */
+@keyframes cute-pop {
+  0% { transform: scale(0.98); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.itinerary-card,
+.main-pane .panel {
+  animation: cute-pop 0.25s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .primary,
+  .candidate-card,
+  .fly-card,
+  .tag,
+  .itinerary-card,
+  .main-pane .panel {
+    animation: none;
+    transition: none;
+  }
+}

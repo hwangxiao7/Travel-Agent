@@ -73,6 +73,17 @@ class SocialPost(BaseModel):
     platform: str = "tiktok"
 
 
+class SocialEmbed(BaseModel):
+    """Official oEmbed payload — for live display only, never persisted."""
+
+    platform: str = "tiktok"
+    url: str = ""
+    title: str = ""
+    author: str = ""
+    thumbnail: str = ""
+    html: str = ""  # official embed iframe/blockquote markup
+
+
 class Itinerary(BaseModel):
     destination: str
     destination_lat: float
@@ -137,6 +148,37 @@ class SelectRequest(BaseModel):
 
 class SelectResponse(BaseModel):
     itinerary: Itinerary
+
+
+class SocialImportRequest(BaseModel):
+    """User-submitted social links (compliant path — no scraping)."""
+
+    urls: list[str] = Field(default_factory=list)
+    lat: float
+    lng: float
+    dest_name: str = ""  # attach extracted spots to this destination (optional)
+    language: str = "en"
+    persist: bool = True  # store distilled facts into the trending catalog
+
+
+class SocialImportResponse(BaseModel):
+    imported_links: int = 0
+    spots: list[Place] = Field(default_factory=list)  # verified facts
+    embeds: list[SocialEmbed] = Field(default_factory=list)  # official display only
+    created: int = 0
+    updated: int = 0
+
+
+class SocialTextImportRequest(BaseModel):
+    """User-pasted note text (compliant path for platforms without oEmbed, e.g. RED)."""
+
+    texts: list[str] = Field(default_factory=list)
+    lat: float
+    lng: float
+    dest_name: str = ""
+    language: str = "en"
+    platform: str = "xiaohongshu"
+    persist: bool = True
 
 
 class FlyDestinationsRequest(BaseModel):
@@ -335,3 +377,16 @@ class ProfileOut(BaseModel):
     profile_text: str
     trip_count: int
     review_count: int
+
+
+class FeedbackCreate(BaseModel):
+    event_type: Literal["click", "save", "skip", "visit", "rate", "share"]
+    destination: str = ""
+    place_name: str = ""
+    value: float = 0.0  # e.g. rating 1-5 when event_type == "rate"
+
+
+class FeedbackOut(BaseModel):
+    ok: bool
+    event_type: str
+    destination: str

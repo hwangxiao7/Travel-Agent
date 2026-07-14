@@ -16,9 +16,37 @@ from dataclasses import asdict, dataclass, field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db import PlaceReview, Trip, User
+from app.db import FeedbackEvent, PlaceReview, Trip, User
 from app.services.embeddings import Vector, embed_query, embed_texts
 from app.services.personalization import UserProfile, build_user_profile
+
+# Behavior event → affinity delta (design doc §14).
+_FEEDBACK_WEIGHTS: dict[str, float] = {
+    "save": 0.18,
+    "visit": 0.15,
+    "share": 0.12,
+    "click": 0.04,
+    "skip": -0.15,
+}
+
+
+def feedback_affinity(db: Session, user: User) -> dict[str, float]:
+    """Aggregate behavior events into per-destination affinity in [-0.35, 0.45]."""
+    rows = db.scalars(
+        select(FeedbackEvent).where(FeedbackEvent.user_id == user.id)
+    ).all()
+    agg: dict[str, float] = {}
+    for e in rows:
+        dest = (e.destination or "").strip()
+        if not dest:
+            continue
+        if e.event_type == "rate":
+            # 1-5 rating → centered delta (3 neutral).
+            delta = 0.06 * (float(e.value or 3.0) - 3.0)
+        else:
+            delta = _FEEDBACK_WEIGHTS.get(e.event_type, 0.0)
+        agg[dest] = agg.get(dest, 0.0) + delta
+    return {d: max(-0.35, min(0.45, v)) for d, v in agg.items()}
 
 _TOKEN_RE = re.compile(r"[a-z0-9\u4e00-\u9fff]+", re.I)
 
@@ -165,8 +193,24 @@ async def retrieve_user_memories(
 
     past_tags = list(profile.activity_preferences)
 
+    # Behavior-event affinity (design doc §14): SAVE/VISIT ↑, SKIP ↓, etc.
+    fb_affinity = feedback_affinity(db, user)
+    # VISIT events also count toward visit-based novelty.
+    for e in db.scalars(
+        select(FeedbackEvent).where(
+            FeedbackEvent.user_id == user.id, FeedbackEvent.event_type == "visit"
+        )
+    ).all():
+        if e.destination:
+            visit_counts[e.destination] = visit_counts.get(e.destination, 0) + 1
+
     if not memories:
-        return UserMemoryContext(profile=profile, visit_counts=visit_counts, past_tags=past_tags)
+        return UserMemoryContext(
+            profile=profile,
+            visit_counts=visit_counts,
+            past_tags=past_tags,
+            affinity=dict(fb_affinity),
+        )
 
     qtok = _tokens(query)
     qvec = await embed_query(query)
@@ -190,7 +234,7 @@ async def retrieve_user_memories(
     if not top:
         top = hits[: min(3, len(hits))]
 
-    affinity: dict[str, float] = {}
+    affinity: dict[str, float] = dict(fb_affinity)  # seed with behavior events
     for h in top:
         dest = h.doc.destination
         if not dest:

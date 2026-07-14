@@ -20,6 +20,7 @@ from app.models.schemas import (
     Preference,
     SearchRequest,
     SelectRequest,
+    SocialPost,
 )
 from app.services.airports import airport_by_iata, nearest_airport
 from app.services.constraint_engine import ScoredDestination, find_candidates
@@ -37,6 +38,7 @@ from app.services.rag_pipeline import corpus_has_semantic_focus
 from app.services.rag_pipeline import rag_pipeline
 from app.services.routing import drive_duration_hours, drive_durations_hours
 from app.services.social import social_highlights
+from app.services.trending_store import get_trending_places
 
 
 def _packing_tips(prefs: list[Preference], trip_type: str, lang: str) -> list[str]:
@@ -76,6 +78,21 @@ async def _refine_drive_times(origin, scored_list: list[ScoredDestination]) -> N
             scored.drive_time = format_duration(hours)
 
 
+async def _social_for(
+    name: str, lat: float, lng: float, language: str
+) -> tuple[list[SocialPost], list[Place]]:
+    """Serve trending spots from the ingested store; fall back to live scraping.
+
+    Ingested spots are the durable, verified, cross-validated asset — so if the
+    background pipeline has populated them we skip per-request scraping entirely
+    (faster, cheaper, no live API dependency). When empty (destination never
+    ingested), degrade to a live best-effort fetch so the demo still works."""
+    spots = get_trending_places(name)
+    if spots:
+        return [], spots
+    return await social_highlights(name, lat, lng, language)
+
+
 async def _local_highlights(
     lat: float, lng: float, start_date: str
 ) -> tuple[list[Place], list[Place], list[Event]]:
@@ -97,11 +114,13 @@ async def _apply_grounding(
     events: list[Event],
     profile_note: str = "",
     rag_context: str = "",
+    framing_note: str = "",
 ) -> Itinerary:
     """RAG step: replace catalog activities with LLM-generated, grounded ones.
 
     `rag_context` is multi-doc retrieval (top destinations + user memory) from
     the search/plan pipeline — not just the single destination blurb.
+    `framing_note` carries local-discovery vibe (mood / energy / company).
     """
     base_ctx = context_for(itinerary.destination)
     merged = grounding_context_used(base_ctx, rag_context)
@@ -119,6 +138,7 @@ async def _apply_grounding(
         language=request.language,
         profile_note=profile_note,
         rag_context=rag_context,
+        framing_note=framing_note,
     )
     if grounded:
         known = {p.name for p in food + fun}
@@ -136,6 +156,22 @@ def _rag_context_text(blocks: list[str] | None, *, limit: int = 4) -> str:
     if not blocks:
         return ""
     return "\n\n".join(b for b in blocks[:limit] if b)
+
+
+def _framing_note(intent) -> str:
+    """Human-readable local-discovery vibe from intent (mood/energy/company/time)."""
+    if intent is None:
+        return ""
+    bits: list[str] = []
+    if getattr(intent, "mood", None):
+        bits.append("mood " + "/".join(intent.mood[:3]))
+    if getattr(intent, "energy_level", None):
+        bits.append(f"{intent.energy_level} energy")
+    if getattr(intent, "social_context", None):
+        bits.append(f"for {intent.social_context}")
+    if getattr(intent, "time_window", None):
+        bits.append(str(intent.time_window))
+    return ", ".join(bits)
 
 
 def _synthetic_plan_query(request: PlanRequest, profile_text: str = "") -> str:
@@ -237,6 +273,7 @@ async def create_plan(
             profile_text=profile_note,
             memory_ctx=memory_ctx,
             k=max(8, len(candidates)),
+            start_date=request.start_date,
         )
         by_name = {c.destination.name: c for c in candidates}
         reranked: list[ScoredDestination] = []
@@ -265,7 +302,7 @@ async def create_plan(
         weather, (food, fun, events), (guides, viral) = await asyncio.gather(
             fetch_weather_note(top.destination.lat, top.destination.lng, request.language),
             _local_highlights(top.destination.lat, top.destination.lng, request.start_date),
-            social_highlights(
+            _social_for(
                 top.destination.name, top.destination.lat, top.destination.lng, request.language
             ),
         )
@@ -303,6 +340,7 @@ async def create_plan(
             events,
             profile_note=profile_note,
             rag_context=rag_ctx,
+            framing_note=_framing_note(getattr(rag, "intent", None)),
         )
         itinerary = itinerary.model_copy(update={"guides": guides, "viral": viral})
         candidate_payload = [
@@ -326,6 +364,7 @@ async def plan_for_destination(
     *,
     rag_context: str = "",
     profile_note: str = "",
+    framing_note: str = "",
 ) -> Itinerary:
     dest = next((d for d in DESTINATIONS if d.name == req.destination_name), None)
     if dest is None:
@@ -357,7 +396,7 @@ async def plan_for_destination(
     weather, (food, fun, events), (guides, viral) = await asyncio.gather(
         fetch_weather_note(dest.lat, dest.lng, req.language),
         _local_highlights(dest.lat, dest.lng, req.start_date),
-        social_highlights(dest.name, dest.lat, dest.lng, req.language),
+        _social_for(dest.name, dest.lat, dest.lng, req.language),
     )
 
     summary_prompt = (
@@ -389,6 +428,7 @@ async def plan_for_destination(
         events,
         profile_note=profile_note,
         rag_context=rag_context,
+        framing_note=framing_note,
     )
     return itinerary.model_copy(update={"guides": guides, "viral": viral})
 
@@ -398,6 +438,7 @@ async def plan_for_fly_destination(
     *,
     rag_context: str = "",
     profile_note: str = "",
+    framing_note: str = "",
 ) -> Itinerary:
     dest = next((d for d in FLY_DESTINATIONS if d.name == req.destination_name), None)
     if dest is None:
@@ -429,7 +470,7 @@ async def plan_for_fly_destination(
     weather, (food, fun, events), (guides, viral) = await asyncio.gather(
         fetch_weather_note(dest.lat, dest.lng, req.language),
         _local_highlights(dest.lat, dest.lng, req.start_date),
-        social_highlights(dest.name, dest.lat, dest.lng, req.language),
+        _social_for(dest.name, dest.lat, dest.lng, req.language),
     )
 
     summary_prompt = (
@@ -461,6 +502,7 @@ async def plan_for_fly_destination(
         events,
         profile_note=profile_note,
         rag_context=rag_context,
+        framing_note=framing_note,
     )
     return itinerary.model_copy(
         update={
@@ -622,6 +664,7 @@ async def search_destinations(
             memory_ctx=memory_ctx,
             k=8,
             intent=intent,
+            start_date=req.start_date,
         )
     finally:
         if db is not None:
@@ -675,6 +718,7 @@ async def search_destinations(
     top_doc = rag.ranked[0].doc
     rag_ctx = _rag_context_text(rag.context_blocks)
     profile_for_ground = profile_text
+    framing = _framing_note(intent)
     if top_doc.travel_mode == "fly":
         itinerary = await plan_for_fly_destination(
             FlyPlanRequest(
@@ -688,6 +732,7 @@ async def search_destinations(
             ),
             rag_context=rag_ctx,
             profile_note=profile_for_ground,
+            framing_note=framing,
         )
     else:
         itinerary = await plan_for_destination(
@@ -702,6 +747,7 @@ async def search_destinations(
             ),
             rag_context=rag_ctx,
             profile_note=profile_for_ground,
+            framing_note=framing,
         )
 
     real_hours = await drive_durations_hours(

@@ -27,3 +27,9 @@ frontend/dist/
 .idea/
 .vscode/
 data/
+
+# iOS / Xcode
+ios/build/
+ios/DerivedData/
+*.xcuserstate
+xcuserdata/

@@ -28,6 +28,11 @@ class TravelIntent:
     pace: str | None = None  # easy | moderate | strenuous
     constraints: list[str] = field(default_factory=list)
     negative_preferences: list[str] = field(default_factory=list)
+    # Local-discovery framing (design doc §1-2, §8): not just "travel destinations".
+    social_context: str | None = None  # solo | couple | friends | family
+    energy_level: str | None = None  # low | medium | high
+    mood: list[str] = field(default_factory=list)  # relax | adventure | romantic | social | explore | fun
+    time_window: str | None = None  # tonight | today | evening | weekend
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -81,6 +86,37 @@ _SCENERY_MAP: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"canyon|峡谷", re.I), "canyon"),
     (re.compile(r"view|viewpoint|观景|风景", re.I), "viewpoint"),
     (re.compile(r"quiet|peaceful|安静|清静", re.I), "quiet"),
+]
+
+# --- Local-discovery framing maps (design doc §1-2, §8) ---
+_SOCIAL_MAP: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\bsolo\b|alone|by myself|one person|独自|一个人|自己一个", re.I), "solo"),
+    (re.compile(r"\bdate\b|romantic|my partner|girlfriend|boyfriend|couple|约会|情侣|对象|两个人", re.I), "couple"),
+    (re.compile(r"friends|buddies|group|hang ?out|朋友|一群|聚会", re.I), "friends"),
+    (re.compile(r"family|kids|children|parents|家人|孩子|带娃|一家", re.I), "family"),
+]
+_ENERGY_LOW = re.compile(
+    r"tired|exhausted|relax(ing)?|chill|low.?key|unwind|lazy|easy going|"
+    r"累|疲惫|放松|休闲|懒|轻松",
+    re.I,
+)
+_ENERGY_HIGH = re.compile(
+    r"adventur|energetic|active|thrill|pumped|intense|explore a lot|"
+    r"刺激|冒险|活力|挑战|嗨",
+    re.I,
+)
+_MOOD_MAP: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"relax|chill|unwind|calm|de-?stress|放松|解压|静", re.I), "relax"),
+    (re.compile(r"romantic|date|cozy|intimate|浪漫|约会|温馨", re.I), "romantic"),
+    (re.compile(r"adventur|thrill|explore|discover|new|冒险|探索|新鲜", re.I), "adventure"),
+    (re.compile(r"fun|exciting|lively|party|好玩|热闹|嗨", re.I), "fun"),
+    (re.compile(r"social|meet people|friends|社交|认识", re.I), "social"),
+]
+_TIME_MAP: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"tonight|this evening|今晚|今天晚上", re.I), "tonight"),
+    (re.compile(r"today|right now|this afternoon|今天|现在|下午", re.I), "today"),
+    (re.compile(r"evening|dinner time|傍晚|晚上", re.I), "evening"),
+    (re.compile(r"weekend|周末|礼拜六|星期六|星期天|礼拜天", re.I), "weekend"),
 ]
 
 # Open-vocabulary specialties: not Preference enum tags; matched against corpus text.
@@ -333,9 +369,30 @@ def extract_intent(query: str) -> TravelIntent:
             intent.budget = budget
             break
 
+    # --- Local-discovery framing ---
+    for pat, social in _SOCIAL_MAP:
+        if pat.search(norm):
+            intent.social_context = social
+            break
+    if _ENERGY_LOW.search(norm):
+        intent.energy_level = "low"
+    elif _ENERGY_HIGH.search(norm):
+        intent.energy_level = "high"
+    for pat, mood in _MOOD_MAP:
+        if pat.search(norm) and mood not in intent.mood:
+            intent.mood.append(mood)
+    for pat, tw in _TIME_MAP:
+        if pat.search(norm):
+            intent.time_window = tw
+            break
+
     if _PACE_EASY.search(norm):
         intent.pace = "easy"
     elif _PACE_HARD.search(norm):
+        intent.pace = "strenuous"
+    elif intent.energy_level == "low":
+        intent.pace = "easy"  # tired/relaxed → easy pace
+    elif intent.energy_level == "high":
         intent.pace = "strenuous"
     else:
         intent.pace = "moderate" if intent.activities else None
@@ -371,6 +428,14 @@ def extract_intent(query: str) -> TravelIntent:
         intent.constraints.append(f"pace={intent.pace}")
     for s in intent.scenery:
         intent.constraints.append(f"scenery={s}")
+    if intent.social_context:
+        intent.constraints.append(f"social={intent.social_context}")
+    if intent.energy_level:
+        intent.constraints.append(f"energy={intent.energy_level}")
+    for m in intent.mood:
+        intent.constraints.append(f"mood={m}")
+    if intent.time_window:
+        intent.constraints.append(f"time={intent.time_window}")
 
     intent.rewritten_query = rewrite_query(intent)
     return intent
@@ -443,6 +508,12 @@ def rewrite_query(
             parts.append("tags: " + ", ".join(p.replace("-", " ") for p in intent.preferences))
     if intent.pace:
         parts.append(f"pace: {intent.pace}")
+    if intent.mood:
+        parts.append("mood: " + ", ".join(intent.mood))
+    if intent.energy_level:
+        parts.append(f"energy: {intent.energy_level}")
+    if intent.social_context:
+        parts.append(f"company: {intent.social_context}")
     if intent.season:
         parts.append(f"season: {intent.season}")
     if intent.negative_preferences:

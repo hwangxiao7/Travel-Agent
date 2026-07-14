@@ -1,9 +1,18 @@
+/* Cute theme fonts — rounded body + handwritten accents.
+   Loaded from Google Fonts when online; falls back to rounded system fonts
+   (incl. macOS/iOS) so the app still looks soft offline. */
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700&family=Patrick+Hand&display=swap');
+
 :root {
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-cute: 'Baloo 2', 'Varela Round', 'Quicksand', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-hand: 'Patrick Hand', 'Chalkboard SE', 'Comic Sans MS', var(--font-cute);
+
+  font-family: var(--font-cute);
   line-height: 1.5;
-  font-weight: 400;
-  color: #0f172a;
-  background: #f1f5f9;
+  font-weight: 500;
+  color: #4b3f47;
+  background: #fff7f2;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;

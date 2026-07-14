@@ -1,78 +1,65 @@
-# Spontaneous Travel Agent
+# Spontaneous Travel Agent / 说走就走旅行助手
 
-Web AI agent for **spontaneous North America trips** — day trips and weekends based on your location, preferences, and drive-time limits.
+北美「说走就走」旅行规划 Web 应用：出发地 + 约束，或一句自然语言，生成有事实依据的逐日行程。
+
+**完整中文技术文档（架构 / RAG / API / 运行）：** [PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md)  
+**技术选型与为什么这么用：** [docs/架构技术选型.md](./docs/架构技术选型.md)
 
 ## Stack
 
-- **Frontend:** React + Vite + TypeScript
-- **Backend:** Python FastAPI
-- **Architecture:** Constraint engine (Python) filters destinations → LLM writes the narrative (optional)
+- **Frontend:** React + Vite + TypeScript + Leaflet  
+- **Backend:** Python FastAPI  
+- **RAG:** LLM rewrite + embeddings、双路径检索（corpus / nearby POI）、检索上下文注入行程生成、用户记忆、搜广推融合  
 
 ## Quick start
 
-### 1. Backend
+### Backend
 
 ```bash
 cd backend
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp ../.env.example ../.env   # edit keys as needed
+cp ../.env.example ../.env   # 按需填写
 uvicorn app.main:app --reload --port 8000
 ```
 
-Works **without API keys** using a curated destination catalog and template summaries. Set `LLM_PROVIDER=openai` or `anthropic` plus the matching API key for AI summaries and chat.
+无 API key 也可跑通（精选目录 + 模板文案）。接 Ollama / OpenAI / Anthropic 可开启 AI 摘要、语义检索与聊天。
 
-### 2. Frontend
+### Frontend
 
 ```bash
 cd frontend
-npm install
-npm run dev
+npm install && npm run dev
 ```
 
-The map uses free OpenStreetMap tiles via Leaflet — no token or signup needed.
+打开 http://localhost:5173  
 
-Open http://localhost:5173
+地图使用 Leaflet + OpenStreetMap，无需 token。
 
-## Environment
+### RAG 评测
 
-| Variable | Where | Purpose |
-|---|---|---|
-| `LLM_PROVIDER` | backend `.env` | `template` (default), `openai`, or `anthropic` |
-| `OPENAI_API_KEY` | backend `.env` | GPT-4o-mini summaries & chat |
-| `ANTHROPIC_API_KEY` | backend `.env` | Claude Haiku summaries & chat |
-| `OPENWEATHER_API_KEY` | backend `.env` | Live weather note on plan |
-| `RAPIDAPI_KEY` | backend `.env` | Live flight search (fares + times) via [Sky-Scrapper on RapidAPI](https://rapidapi.com/apiheya/api/sky-scrapper) (free tier) |
+```bash
+cd backend && python -m app.eval.run_eval
+```
 
-**Flights:** turn on the weekend flight toggle to see fly-to outdoor destinations (Zion, Grand Canyon, Yellowstone, Banff…) with estimated flight times. With a RapidAPI key each card shows a real **"from $X" starting price**, and searching a destination lists **live fares/schedules** plus the **cheapest days** (click a day to search that date). Without a key it gracefully falls back to estimates. (Amadeus Self-Service was dropped: it stopped new signups and shuts down July 2026.)
+## 主要能力
 
-> Note: live prices call the RapidAPI free tier, which has a monthly quota. Price lookups are best-effort and fail silently to estimates if the quota is hit.
+- 约束规划（Preference chips）+ 自然语言搜索（中/英）  
+- 闭域 Corpus RAG；语料未命中时附近 POI 兜底（不灌水国家公园）  
+- Grounded 逐日行程；OSRM 真实车程；可选飞行报价  
+- 账号、行程保存、景点公开评价、个性化记忆  
+- 候选卡展示人话「推荐理由」（不展示内部打分）  
+- 中英 UI；导出 `.ics` / Google Maps  
 
-The interactive map uses **Leaflet + OpenStreetMap** — free, no token required.
+## API（摘要）
 
-User preferences (home location, tags) persist in **browser localStorage** — no account required.
+| 路径 | 说明 |
+|---|---|
+| `POST /api/plan` | 约束规划（含 RAG 重排） |
+| `POST /api/search` | 自然语言 RAG 搜索 |
+| `POST /api/select` · `/api/fly-*` · `/api/flights*` | 选定 / 飞行 / 报价 |
+| `POST /api/chat` | 对话微调 |
+| `/api/auth/*` · `/api/trips` · `/api/reviews` | 账号 / 行程 / 评价 |
+| `GET /metrics` | Prometheus |
 
-## API
-
-- `POST /api/plan` — generate itinerary from constraints
-- `POST /api/select` — build itinerary for a chosen drive candidate
-- `POST /api/fly-destinations` — list fly-to destinations within a flight-time limit
-- `POST /api/fly-prices` — cheapest starting price per fly-to destination (batch)
-- `POST /api/fly-plan` — build itinerary for a chosen fly-to destination
-- `POST /api/flights` — search real/estimated flights (origin → destination, date)
-- `POST /api/flights/calendar` — cheapest price per day for a route (pick the best day)
-- `POST /api/chat` — refine plan via conversation
-- `POST /api/geocode` — address → coordinates
-- `GET /api/health` — health check
-
-## MVP scope
-
-- Day trip & weekend (2-day) planning
-- Drive-time filtering from origin coordinates
-- Fly-to weekend destinations with estimated/real flight search (Amadeus)
-- Preference tags: national park, hiking, city walk, forest, beach
-- Hybrid UI: constraint panel + map + itinerary + chat
-- Multi-language UI + AI responses (English / 中文, toggle in top bar)
-
-Not in v1: user accounts, bookings, 3–5 day long trips.
+更多细节与面试可讲点见 [PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md)。
