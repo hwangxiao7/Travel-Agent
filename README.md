@@ -2,7 +2,7 @@
 
 北美「说走就走」旅行规划：**FastAPI 后端 + iOS（主产品）+ Web（对齐 iOS 的 Beta）**。
 
-**文档：** [PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md) · [docs/架构技术选型.md](./docs/架构技术选型.md)
+**文档：** [完整技术分析（含 AI Agent）](./docs/项目技术分析.md) · [PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md) · [架构技术选型](./docs/架构技术选型.md)
 
 ## Stack
 
