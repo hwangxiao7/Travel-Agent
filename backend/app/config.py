@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     llm_provider: str = "openai"  # openai | anthropic | template
     openai_api_key: str = ""
-    openai_base_url: str = ""  # custom endpoint (e.g. Ark); blank = api.openai.com
+    openai_base_url: str = ""  # OpenAI-compatible gateway; blank = api.openai.com
     openai_model: str = "gpt-4o-mini"
     openai_embed_model: str = "text-embedding-3-small"  # RAG semantic retrieval
     # RAG embedding backend: "api" (OpenAI-compatible / Ollama) or "local" (PyTorch).
