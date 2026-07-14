@@ -21,9 +21,6 @@ struct ContentView: View {
                         if !vm.candidates.isEmpty {
                             candidatesCard.id("results")
                         }
-                        if let itinerary = vm.itinerary {
-                            ItineraryCardView(itinerary: itinerary)
-                        }
                     }
                     .padding(16)
                 }
@@ -174,18 +171,51 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 12) {
             cardTitle(vm.searchPath == "poi" ? "Nearby places" : "Options within range",
                       symbol: "mappin.and.ellipse")
-            ForEach(Array(vm.candidates.enumerated()), id: \.element.id) { idx, c in
-                Button { Task { await vm.select(c) } } label: {
-                    candidateRow(c, tilt: idx % 2 == 0 ? -1.0 : 1.0)
-                }
-                .buttonStyle(.plain)
+            ForEach(vm.candidates) { c in
+                candidateCell(c)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .stickerCard(fill: Cute.mintSoft, accent: Cute.mint)
     }
 
-    private func candidateRow(_ c: Candidate, tilt: Double) -> some View {
+    /// One expandable candidate: tap the row to fold its plan in/out below it.
+    @ViewBuilder
+    private func candidateCell(_ c: Candidate) -> some View {
+        let expanded = vm.expandedName == c.name
+        VStack(spacing: 0) {
+            Button {
+                Task { await vm.toggleExpand(c) }
+            } label: {
+                candidateRow(c, expanded: expanded)
+            }
+            .buttonStyle(.plain)
+
+            if expanded {
+                Group {
+                    if let it = vm.itineraries[c.name] {
+                        ItineraryDetail(itinerary: it)
+                    } else if vm.detailLoadingName == c.name {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small).tint(Cute.pink)
+                            Text("Planning…").font(Cute.rounded(13, .medium)).foregroundStyle(Cute.ink.opacity(0.7))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                    }
+                }
+                .padding(.top, 10)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 18).fill(expanded ? Cute.pinkSoft : Cute.cream))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(expanded ? Cute.pink : Cute.ink, lineWidth: 2))
+        .background(RoundedRectangle(cornerRadius: 18).fill(expanded ? Cute.pink : Cute.ink).offset(x: 2.5, y: 2.5))
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: expanded)
+    }
+
+    private func candidateRow(_ c: Candidate, expanded: Bool) -> some View {
         HStack(alignment: .top, spacing: 10) {
             candidateThumb(c)
             VStack(alignment: .leading, spacing: 4) {
@@ -193,6 +223,8 @@ struct ContentView: View {
                     Text(c.name).font(Cute.rounded(16))
                     Spacer()
                     Text(c.driveTime).font(Cute.rounded(13, .semibold)).foregroundStyle(Color(hex: 0xE0699A))
+                    Image(systemName: expanded ? "chevron.up.circle.fill" : "chevron.down.circle")
+                        .foregroundStyle(Cute.pink)
                 }
                 if !c.highlight.isEmpty {
                     Text(c.highlight).font(Cute.rounded(13, .medium)).foregroundStyle(Cute.ink.opacity(0.7))
@@ -204,11 +236,7 @@ struct ContentView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 18).fill(Cute.cream))
-        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Cute.ink, lineWidth: 2))
-        .background(RoundedRectangle(cornerRadius: 18).fill(Cute.ink).offset(x: 2.5, y: 2.5))
-        .rotationEffect(.degrees(tilt))
+        .contentShape(Rectangle())
     }
 
     @ViewBuilder
@@ -304,31 +332,30 @@ struct PrefIcon: View {
     }
 }
 
-struct ItineraryCardView: View {
+/// Inline itinerary detail rendered under an expanded candidate (no outer card).
+struct ItineraryDetail: View {
     let itinerary: Itinerary
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Label(itinerary.destination, systemImage: "suitcase.fill")
-                .font(Cute.rounded(20, .heavy)).foregroundStyle(Cute.ink)
-            Text(itinerary.driveTime).font(Cute.rounded(13, .semibold)).foregroundStyle(Color(hex: 0xE0699A))
+        VStack(alignment: .leading, spacing: 10) {
+            Divider().overlay(Cute.pink.opacity(0.5))
             if !itinerary.summary.isEmpty {
-                Text(itinerary.summary).font(Cute.rounded(14, .medium)).foregroundStyle(Cute.ink.opacity(0.8))
+                Text(itinerary.summary).font(Cute.rounded(13, .medium)).foregroundStyle(Cute.ink.opacity(0.8))
             }
             if !itinerary.weatherNote.isEmpty {
                 Label(itinerary.weatherNote, systemImage: "cloud.sun.fill")
-                    .font(Cute.rounded(13, .medium)).foregroundStyle(Cute.ink.opacity(0.7))
+                    .font(Cute.rounded(12, .medium)).foregroundStyle(Cute.ink.opacity(0.7))
             }
             ForEach(itinerary.days) { day in
                 VStack(alignment: .leading, spacing: 8) {
                     Label(day.date, systemImage: "calendar")
-                        .font(Cute.rounded(15, .bold)).foregroundStyle(Cute.ink)
+                        .font(Cute.rounded(14, .bold)).foregroundStyle(Cute.ink)
                     ForEach(day.activities) { act in
                         HStack(alignment: .top, spacing: 8) {
                             Text(act.time).font(Cute.rounded(12, .semibold))
-                                .foregroundStyle(Cute.pink).frame(width: 52, alignment: .leading)
+                                .foregroundStyle(Cute.pink).frame(width: 50, alignment: .leading)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(act.place).font(Cute.rounded(14, .bold)).foregroundStyle(Cute.ink)
+                                Text(act.place).font(Cute.rounded(13, .bold)).foregroundStyle(Cute.ink)
                                 if !act.note.isEmpty {
                                     Text(act.note).font(Cute.rounded(12, .medium)).foregroundStyle(Cute.ink.opacity(0.65))
                                 }
@@ -346,7 +373,6 @@ struct ItineraryCardView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .stickerCard(fill: Cute.cream, accent: Cute.butter)
     }
 }
 

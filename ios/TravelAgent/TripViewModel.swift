@@ -17,11 +17,15 @@ final class TripViewModel {
     var preferences: Set<Preference> = []
 
     // Output
-    var itinerary: Itinerary?
     var candidates: [Candidate] = []
     var searchPath: String?
     var isLoading = false
     var errorMessage: String?
+
+    // Inline expand/collapse (accordion) state.
+    var expandedName: String?
+    var detailLoadingName: String?
+    var itineraries: [String: Itinerary] = [:]   // per-candidate cache
 
     private let api = APIClient.shared
 
@@ -72,11 +76,17 @@ final class TripViewModel {
         }
     }
 
-    /// Rebuild the itinerary for a tapped candidate (drive destinations).
-    func select(_ candidate: Candidate) async {
-        isLoading = true
-        errorMessage = nil
-        defer { isLoading = false }
+    /// Tap a candidate: expand its detail inline (or collapse if already open).
+    /// Fetches + caches the itinerary the first time it's opened.
+    func toggleExpand(_ candidate: Candidate) async {
+        if expandedName == candidate.name {
+            expandedName = nil
+            return
+        }
+        expandedName = candidate.name
+        if itineraries[candidate.name] != nil { return }   // cached
+        detailLoadingName = candidate.name
+        defer { detailLoadingName = nil }
         do {
             let req = SelectRequest(
                 origin: origin,
@@ -85,11 +95,27 @@ final class TripViewModel {
                 startDate: startDateString,
                 preferences: Array(preferences)
             )
-            itinerary = try await api.select(req).itinerary
+            itineraries[candidate.name] = try await api.select(req).itinerary
         } catch let err as APIError {
             errorMessage = err.detail
+            expandedName = nil
         } catch {
             errorMessage = error.localizedDescription
+            expandedName = nil
+        }
+    }
+
+    private func applyResults(itinerary: Itinerary, candidates: [Candidate], path: String?) {
+        self.candidates = candidates
+        self.searchPath = path
+        self.itineraries = [:]
+        // The backend already generated the top pick's itinerary — cache it and
+        // pre-expand so the user sees a full plan immediately.
+        if let top = candidates.first {
+            itineraries[top.name] = itinerary
+            expandedName = top.name
+        } else {
+            expandedName = nil
         }
     }
 
@@ -104,9 +130,7 @@ final class TripViewModel {
             allowFlight: allowFlight
         )
         let resp = try await api.search(req)
-        itinerary = resp.itinerary
-        candidates = resp.candidates
-        searchPath = resp.searchPath
+        applyResults(itinerary: resp.itinerary, candidates: resp.candidates, path: resp.searchPath)
     }
 
     private func runPlan() async throws {
@@ -119,8 +143,6 @@ final class TripViewModel {
             allowFlight: allowFlight
         )
         let resp = try await api.plan(req)
-        itinerary = resp.itinerary
-        candidates = resp.candidates
-        searchPath = "corpus"
+        applyResults(itinerary: resp.itinerary, candidates: resp.candidates, path: "corpus")
     }
 }
