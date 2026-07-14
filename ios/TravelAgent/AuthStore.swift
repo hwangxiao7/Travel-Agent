@@ -17,13 +17,15 @@ final class AuthStore {
 
     /// Restore a persisted session on launch (validates the token).
     func bootstrap() async {
-        // Debug-only auto-login for screenshots/demos: DEMO_LOGIN="email|password".
+        // DEBUG-only auto-login for screenshots: DEMO_LOGIN="email|password".
+        #if DEBUG
         if let combo = ProcessInfo.processInfo.environment["DEMO_LOGIN"],
            combo.contains("|") {
             let parts = combo.split(separator: "|", maxSplits: 1).map(String.init)
             if parts.count == 2 { _ = await login(email: parts[0], password: parts[1]) }
             return
         }
+        #endif
         guard let token = Keychain.get(Self.tokenKey) else { return }
         await api.setToken(token)
         do {
@@ -38,14 +40,22 @@ final class AuthStore {
     }
 
     func register(email: String, password: String, displayName: String) async -> Bool {
-        await run {
+        if let msg = Self.validateCredentials(email: email, password: password, registering: true) {
+            errorMessage = msg
+            return false
+        }
+        return await run {
             let resp = try await self.api.register(email: email, password: password, displayName: displayName)
             await self.apply(resp)
         }
     }
 
     func login(email: String, password: String) async -> Bool {
-        await run {
+        if let msg = Self.validateCredentials(email: email, password: password, registering: false) {
+            errorMessage = msg
+            return false
+        }
+        return await run {
             let resp = try await self.api.login(email: email, password: password)
             await self.apply(resp)
         }
@@ -94,10 +104,30 @@ final class AuthStore {
     }
 
     func submitQuiz(_ answers: [String: String]) async -> Bool {
-        await run { self.persona = try await self.api.submitPersonaQuiz(answers) }
+        await run {
+            self.persona = try await self.api.submitPersonaQuiz(answers)
+            // Quiz also writes default_prefs + taste — refresh account.
+            self.user = try await self.api.me()
+        }
     }
 
     // MARK: helpers
+
+    /// Client-side checks before hitting the API (server still re-validates).
+    static func validateCredentials(email: String, password: String, registering: Bool) -> String? {
+        let e = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        let zh = Config.language == "zh"
+        if e.isEmpty || !e.contains("@") || e.hasPrefix("@") || e.hasSuffix("@") {
+            return zh ? "请输入有效邮箱" : "Enter a valid email"
+        }
+        if password.isEmpty {
+            return zh ? "请输入密码" : "Enter your password"
+        }
+        if registering && password.count < 6 {
+            return zh ? "密码至少 6 位" : "Password must be at least 6 characters"
+        }
+        return nil
+    }
 
     private func apply(_ resp: AuthResponse) async {
         Keychain.set(resp.accessToken, for: Self.tokenKey)

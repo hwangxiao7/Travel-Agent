@@ -429,6 +429,50 @@ async def extract_viral_places(
     return out[:8]
 
 
+async def enrich_experiences(spots: list[Place], context: str, language: str) -> None:
+    """Attach open-vocab experience tags + a neutral blurb to each spot, in place.
+
+    Turns a bare "viral place" into an "experience" that a persona can match
+    against (e.g. 抓小龙虾 → ["outdoor","foraging","water","hands-on"]). The blurb
+    is a short neutral descriptor we generate — never copied post text."""
+    if not spots:
+        return
+    names = "\n".join(f"- {s.name}" for s in spots)
+    prompt = (
+        "For each place, infer the EXPERIENCE it offers and label it for taste "
+        "matching. Use open-vocabulary lowercase tags describing vibe/activity/"
+        "audience/budget, e.g. outdoor, foraging, hands-on, water, hiking, food, "
+        "nightlife, romantic, family, solo, quiet, hidden-gem, photography, "
+        "adventure, relaxing, budget, luxury.\n"
+        "Also write a neutral one-line blurb (your own words, no copied captions).\n"
+        f"Context (social posts, for inference only):\n{context[:1500]}\n\n"
+        f"Places:\n{names}\n\n"
+        'Return ONLY JSON: {"items":[{"name":"...","tags":["..."],"blurb":"..."}]}. '
+        "Max 6 tags each."
+    )
+    raw = await generate_summary(prompt, json_mode=True)
+    if not raw:
+        return
+    try:
+        obj = json.loads(raw)
+        items = obj.get("items", []) if isinstance(obj, dict) else []
+    except (json.JSONDecodeError, AttributeError):
+        return
+    by_name = {s.name.strip().lower(): s for s in spots}
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        spot = by_name.get(str(it.get("name", "")).strip().lower())
+        if spot is None:
+            continue
+        tags = [str(t).strip().lower() for t in (it.get("tags") or []) if str(t).strip()]
+        spot.experience_tags = list(dict.fromkeys(tags))[:6]
+        blurb = str(it.get("blurb") or "").strip()
+        if blurb:
+            spot.blurb = blurb[:280]
+    _ = lang_name(language)  # reserved for localized blurbs later
+
+
 async def _geocode_near(
     client: httpx.AsyncClient, query: str, display: str, lat: float, lng: float, span: float
 ) -> Place | None:
@@ -566,6 +610,9 @@ async def import_from_links(
             name_sources.setdefault(query, set()).add(platform)
             display_of.setdefault(query, display)
     located = await _locate_sourced(name_sources, display_of, lat, lng)
+    await enrich_experiences(
+        [p for p, _ in located], "\n".join(e.title for e in embeds), language
+    )
     return located, embeds
 
 
@@ -593,7 +640,9 @@ async def import_from_text(
     for query, display in pairs:
         name_sources.setdefault(query, set()).add(platform)
         display_of.setdefault(query, display)
-    return await _locate_sourced(name_sources, display_of, lat, lng)
+    located = await _locate_sourced(name_sources, display_of, lat, lng)
+    await enrich_experiences([p for p, _ in located], "\n".join(blocks), language)
+    return located
 
 
 async def social_highlights(

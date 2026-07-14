@@ -38,7 +38,6 @@ from app.models.schemas import (
 )
 from app.services.personalization import public_reviews_for_place, rebuild_profile_text
 from app.services.persona import (
-    QUIZ,
     get_or_build_persona,
     quiz_answers_to_leans,
     save_persona,
@@ -119,9 +118,18 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
 
 @router.post("/auth/login", response_model=AuthResponse)
 def login(body: LoginRequest, db: Session = Depends(get_db)):
+    from app.auth import _DUMMY_PASSWORD_HASH
+
     email = body.email.strip().lower()
+    if not email or "@" not in email:
+        verify_password(body.password, _DUMMY_PASSWORD_HASH)
+        raise HTTPException(status_code=401, detail="Invalid email or password")
     user = db.scalar(select(User).where(User.email == email))
-    if user is None or not verify_password(body.password, user.password_hash):
+    if user is None:
+        # Same work + same error as wrong password (no email enumeration).
+        verify_password(body.password, _DUMMY_PASSWORD_HASH)
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    if not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     token = create_access_token(user.id, user.email, user.token_version or 0)
     return AuthResponse(access_token=token, user=_user_out(user))
@@ -234,8 +242,10 @@ def update_persona(
 
 
 @router.get("/me/persona/quiz", response_model=PersonaQuizResponse)
-def persona_quiz():
-    return PersonaQuizResponse(questions=QUIZ)
+def persona_quiz(language: str = "en"):
+    from app.services.persona import quiz_questions
+
+    return PersonaQuizResponse(questions=quiz_questions(language))
 
 
 @router.post("/me/persona/quiz", response_model=PersonaOut)
@@ -244,14 +254,23 @@ def submit_persona_quiz(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Persist quiz → recompute persona (quiz-dominant) → taste + default prefs."""
+    from app.services.persona import (
+        apply_quiz_to_user,
+        compute_persona,
+        quiz_answers_to_leans,
+    )
+
     leans = quiz_answers_to_leans(body.answers)
+    if not leans:
+        raise HTTPException(status_code=422, detail="No valid quiz answers")
     persona = get_or_build_persona(db, user, recompute=True)
     persona.quiz = leans
-    # Re-derive with quiz anchors folded in.
-    from app.services.persona import compute_persona
-    save_persona(db, user, persona)  # persist quiz first
-    fresh = compute_persona(db, user)
+    save_persona(db, user, persona)
+    # Explicit retake: quiz outweighs stale behavior so the result actually moves.
+    fresh = compute_persona(db, user, quiz_weight=0.8)
     save_persona(db, user, fresh)
+    apply_quiz_to_user(db, user, fresh)
     return PersonaOut(**fresh.to_dict())
 
 

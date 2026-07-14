@@ -215,6 +215,66 @@ class DiscoverResponse(BaseModel):
     persona_tags: list[str] = Field(default_factory=list)  # transparency
 
 
+class ActivitySuggestion(BaseModel):
+    key: str
+    name: str
+    name_en: str = ""
+    name_zh: str = ""
+    tags: list[str] = Field(default_factory=list)
+    duration_h: float = 0.0
+    energy: str = ""
+    cost: str = ""
+    companion: list[str] = Field(default_factory=list)
+    indoor: bool = False
+    in_season: bool = True
+    match_score: float = 0.0
+    blurb: str = ""
+    reason: str = ""
+
+
+class ActivitiesRequest(BaseModel):
+    """Shop-independent activity push for 'don't know what to do today'."""
+
+    interests: str = ""  # optional free-text mood/idea; empty = taste-driven
+    companion: str = ""  # solo / date / family / friends / group
+    energy: str = ""  # low / medium / high
+    budget: str = ""  # $ / $$ / $$$ (max)
+    weather: str = ""  # optional context hint
+    language: str = "en"
+    k: int = 8
+
+
+class ActivitiesResponse(BaseModel):
+    activities: list[ActivitySuggestion] = Field(default_factory=list)
+
+
+class ActivityVenueOut(BaseModel):
+    name: str
+    lat: float
+    lng: float
+    distance_miles: float
+    drive_time: str = ""
+    source: str = ""  # trending | nominatim
+    query: str = ""
+    blurb: str = ""
+
+
+class ActivityVenuesRequest(BaseModel):
+    """Resolve nearby places for a picked activity type."""
+
+    activity_key: str
+    origin: Location
+    radius_miles: float = 40.0
+    k: int = 6
+    language: str = "en"
+
+
+class ActivityVenuesResponse(BaseModel):
+    activity_key: str
+    activity_name: str
+    venues: list[ActivityVenueOut] = Field(default_factory=list)
+
+
 class TasteSnippetOut(BaseModel):
     id: int
     text: str
@@ -371,7 +431,7 @@ class RegisterRequest(BaseModel):
 
 class LoginRequest(BaseModel):
     email: str
-    password: str
+    password: str = Field(min_length=1, max_length=72)
 
 
 class UserOut(BaseModel):

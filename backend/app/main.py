@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
 
 from app.agents.planner import (
     create_plan,
@@ -14,7 +15,7 @@ from app.agents.planner import (
 from app.agents.refiner import refine
 from app.auth import get_optional_user
 from app.config import settings
-from app.db import User, init_db
+from app.db import User, get_db, init_db
 from app.models.schemas import (
     CalendarRequest,
     CalendarResponse,
@@ -33,6 +34,13 @@ from app.models.schemas import (
     PriceSummary,
     SearchRequest,
     SearchResponse,
+    ActivitiesRequest,
+    ActivitiesResponse,
+    ActivityVenuesRequest,
+    ActivityVenuesResponse,
+    ActivityVenueOut,
+    DiscoverRequest,
+    DiscoverResponse,
     SelectRequest,
     SelectResponse,
     SocialImportRequest,
@@ -40,6 +48,7 @@ from app.models.schemas import (
     SocialTextImportRequest,
 )
 from app.routers.account import router as account_router
+from app.routers.taste import router as taste_router
 from app.services.airports import airport_by_iata, nearest_airport
 from app.services.destinations import DESTINATIONS
 from app.services.flights import (
@@ -72,6 +81,7 @@ app.add_middleware(
 
 setup_observability(app)
 app.include_router(account_router)
+app.include_router(taste_router)
 
 
 @app.get("/api/health")
@@ -261,6 +271,103 @@ async def social_import_text(request: SocialTextImportRequest):
             embeds=[],
             created=created,
             updated=updated,
+        )
+
+
+@app.post("/api/discover", response_model=DiscoverResponse)
+async def discover(
+    request: DiscoverRequest,
+    user: User | None = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
+    """Persona-matched push of fresh trending experiences near the user.
+
+    Not a nearby-places list: a spot is only pushed if it matches the user's
+    taste persona (explicit interests/preferences + history)."""
+    from app.services.discovery import recommend_experiences
+
+    async with atraced("/api/discover"):
+        pushes, persona_tags = await recommend_experiences(
+            db,
+            user,
+            lat=request.origin.lat,
+            lng=request.origin.lng,
+            preferences=[p.value for p in request.preferences],
+            interests=request.interests,
+            radius_miles=request.radius_miles,
+            language=request.language,
+            k=request.k,
+        )
+        # Evolve the taste profile: remember what a signed-in user asked for.
+        if user is not None and request.interests.strip():
+            from app.services.taste_profile import record_snippet
+
+            record_snippet(db, user, request.interests, source="interest", weight=0.6)
+        return DiscoverResponse(pushes=pushes, persona_tags=persona_tags)
+
+
+@app.post("/api/activities", response_model=ActivitiesResponse)
+async def activities(
+    request: ActivitiesRequest,
+    user: User | None = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
+    """Shop-independent activity ideas for 'don't know what to do today'.
+
+    Pushes 娱乐项目 (types), ranked by taste + season + context — not merchants."""
+    from app.services.activities import recommend_activities
+
+    async with atraced("/api/activities"):
+        acts = await recommend_activities(
+            db,
+            user,
+            interests=request.interests,
+            companion=request.companion,
+            energy=request.energy,
+            budget=request.budget,
+            weather=request.weather,
+            language=request.language,
+            k=request.k,
+        )
+        return ActivitiesResponse(activities=acts)
+
+
+@app.post("/api/activities/venues", response_model=ActivityVenuesResponse)
+async def activity_venues(request: ActivityVenuesRequest):
+    """Given an activity type, find nearby concrete places to actually go.
+
+    e.g. farmers_market → farmers markets; farm_animals → petting farm / zoo / cat cafe.
+    """
+    from app.services.activity_venues import resolve_venues
+
+    async with atraced("/api/activities/venues"):
+        try:
+            activity, venues = await resolve_venues(
+                request.activity_key,
+                lat=request.origin.lat,
+                lng=request.origin.lng,
+                radius_miles=request.radius_miles,
+                k=request.k,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        zh = request.language.lower().startswith("zh")
+        return ActivityVenuesResponse(
+            activity_key=activity.key,
+            activity_name=activity.name_zh if zh else activity.name_en,
+            venues=[
+                ActivityVenueOut(
+                    name=v.name,
+                    lat=v.lat,
+                    lng=v.lng,
+                    distance_miles=v.distance_miles,
+                    drive_time=v.drive_time,
+                    source=v.source,
+                    query=v.query,
+                    blurb=v.blurb,
+                )
+                for v in venues
+            ],
         )
 
 

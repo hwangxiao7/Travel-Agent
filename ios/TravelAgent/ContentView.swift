@@ -2,8 +2,19 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var vm = TripViewModel()
+    @State private var activities = ActivitiesViewModel()
     @State private var auth = AuthStore()
     @State private var showAccount = false
+    /// Mutually exclusive: only one of Surprise / Trip planner is expanded.
+    @State private var openModule: HomeModule = .surprise
+    @AppStorage("app.language") private var languageRaw: String = ""
+
+    private enum HomeModule {
+        case surprise
+        case planner
+    }
+
+    private var zh: Bool { Config.language == "zh" }
 
     var body: some View {
         ZStack {
@@ -12,15 +23,15 @@ struct ContentView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         header
-                        constraintsCard
-                        searchCard
-                        if let error = vm.errorMessage {
+                        modeSwitcher
+                        activeModule
+                        if openModule == .planner, let error = vm.errorMessage {
                             Text(error)
                                 .font(Cute.rounded(14, .medium))
                                 .foregroundStyle(Color(hex: 0xD6336C))
                                 .stickerCard(fill: Cute.pinkSoft, accent: Cute.pink)
                         }
-                        if !vm.candidates.isEmpty {
+                        if openModule == .planner, !vm.candidates.isEmpty {
                             candidatesCard.id("results")
                         }
                     }
@@ -37,22 +48,131 @@ struct ContentView: View {
         }
         .overlay {
             if vm.isLoading {
-                VStack(spacing: 10) {
-                    ProgressView().controlSize(.large).tint(Cute.pink)
-                    Text("Planning…").font(Cute.rounded(16)).foregroundStyle(Cute.ink)
-                }
-                .padding(24)
-                .stickerCard(fill: Cute.cream)
+                CuteLoadingOverlay(
+                    title: zh ? "正在规划…" : "Planning your trip…",
+                    subtitle: zh ? "稍等一下，贴纸还在路上" : "Hang tight — packing the stickers",
+                    symbol: "map.fill"
+                )
+                .transition(.opacity)
             }
         }
         .task { await vm.bootstrapDemoIfRequested() }
+        .task { await activities.load(interests: "") }
         .task {
             await auth.bootstrap()
+            syncPrefsFromAccount()
             if ProcessInfo.processInfo.environment["SHOW_ACCOUNT"] != nil {
                 showAccount = true
             }
         }
+        .onChange(of: auth.user?.id) { _, _ in syncPrefsFromAccount() }
+        .onChange(of: languageRaw) { _, _ in
+            Task { await activities.load(interests: "") }
+        }
         .sheet(isPresented: $showAccount) { AccountView(auth: auth) }
+    }
+
+    private func syncPrefsFromAccount() {
+        guard let prefs = auth.user?.defaultPrefs, !prefs.isEmpty else { return }
+        // Seed chips from quiz-derived defaults when planner chips are empty.
+        if vm.preferences.isEmpty {
+            vm.preferences = Set(prefs)
+        }
+    }
+
+    // MARK: Top icon switcher (always one selected)
+
+    private var modeSwitcher: some View {
+        HStack(spacing: 12) {
+            modeIcon(
+                module: .surprise,
+                symbol: "dice.fill",
+                title: zh ? "今天干嘛" : "Surprise me",
+                caption: zh ? "推玩法" : "Ideas"
+            )
+            modeIcon(
+                module: .planner,
+                symbol: "map.fill",
+                title: zh ? "出行规划" : "Trip planner",
+                caption: zh ? "做行程" : "Plan"
+            )
+        }
+    }
+
+    private func modeIcon(module: HomeModule, symbol: String, title: String, caption: String) -> some View {
+        let on = openModule == module
+        return Button {
+            guard openModule != module else { return }
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                openModule = module
+            }
+        } label: {
+            VStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(on ? Cute.pinkSoft : .white)
+                        .frame(width: 64, height: 64)
+                    Image(systemName: symbol)
+                        .font(.system(size: 26, weight: .bold))
+                        .foregroundStyle(on ? Cute.pink : Cute.ink.opacity(0.45))
+                }
+                .overlay(Circle().stroke(on ? Cute.ink : Cute.line, lineWidth: on ? 2.5 : 2))
+                .background(
+                    Circle()
+                        .fill(on ? Cute.pink : Cute.ink.opacity(0.15))
+                        .offset(x: on ? 2.5 : 0, y: on ? 2.5 : 0)
+                )
+                .scaleEffect(on ? 1.05 : 1.0)
+
+                Text(title)
+                    .font(Cute.rounded(14, on ? .heavy : .semibold))
+                    .foregroundStyle(on ? Cute.ink : Cute.ink.opacity(0.55))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Text(caption)
+                    .font(Cute.rounded(11, .medium))
+                    .foregroundStyle(on ? Cute.pink : Cute.ink.opacity(0.4))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(on ? Cute.cream : Color.white.opacity(0.55))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(on ? Cute.ink : Cute.line, lineWidth: on ? 2.5 : 2)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+
+    @ViewBuilder
+    private var activeModule: some View {
+        Group {
+            if openModule == .surprise {
+                VStack(alignment: .leading, spacing: 12) {
+                    cardTitle(zh ? "今天干嘛" : "Surprise me", symbol: "dice.fill")
+                    activitiesBody
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .stickerCard(fill: Cute.mintSoft, accent: Cute.mint)
+            } else {
+                VStack(alignment: .leading, spacing: 16) {
+                    cardTitle(zh ? "出行规划" : "Trip planner", symbol: "map.fill")
+                    constraintsBody
+                    searchBody
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .stickerCard()
+            }
+        }
+        .id(openModule)
+        .transition(.opacity.combined(with: .move(edge: .bottom)))
     }
 
     // MARK: Header
@@ -106,11 +226,112 @@ struct ContentView: View {
         .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(Cute.ink, lineWidth: 2.5))
     }
 
-    // MARK: Constraints
+    // MARK: Today — activity ideas (body only; chrome is the accordion)
 
-    private var constraintsCard: some View {
+    private var activitiesBody: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(activities.hint)
+                .font(Cute.rounded(13, .medium))
+                .foregroundStyle(Cute.ink.opacity(0.7))
+
+            Button {
+                Task { await activities.load(interests: "") }
+            } label: {
+                Label(
+                    activities.isLoading ? (zh ? "想点子中…" : "Thinking…")
+                        : activities.surpriseLabel,
+                    systemImage: "sparkles"
+                )
+            }
+            .buttonStyle(CutePillButton())
+            .disabled(activities.isLoading)
+
+            HStack(spacing: 10) {
+                activityPicker(
+                    title: zh ? "能量" : "Energy",
+                    selection: $activities.energy,
+                    options: ["", "low", "medium", "high"],
+                    label: { activities.energyLabel($0) }
+                )
+                activityPicker(
+                    title: zh ? "和谁" : "With",
+                    selection: $activities.companion,
+                    options: ["", "solo", "date", "family", "friends"],
+                    label: { activities.companionLabel($0) }
+                )
+            }
+
+            TextField(activities.moodPlaceholder, text: $activities.mood, axis: .vertical)
+                .textFieldStyle(.plain)
+                .font(Cute.rounded(14, .medium))
+                .lineLimit(1...3)
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: 14).fill(.white))
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Cute.line, lineWidth: 2))
+
+            Button {
+                Task { await activities.load() }
+            } label: {
+                Text(activities.matchMoodLabel)
+                    .font(Cute.rounded(14, .semibold))
+                    .foregroundStyle(Cute.ink)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(RoundedRectangle(cornerRadius: 14).fill(.white))
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Cute.line, lineWidth: 2))
+            }
+            .buttonStyle(.plain)
+            .disabled(activities.isLoading)
+
+            if let err = activities.errorMessage {
+                Text(err).font(Cute.rounded(13, .medium)).foregroundStyle(Color(hex: 0xD6336C))
+            }
+
+            ForEach(activities.ideas) { idea in
+                ActivityIdeaCell(
+                    idea: idea,
+                    buttonTitle: activities.nearbyButtonTitle(for: idea.key),
+                    isExpanded: activities.expandedKey == idea.key,
+                    isVenueLoading: activities.venueLoadingKey == idea.key,
+                    venues: activities.venuesByKey[idea.key],
+                    venueError: activities.venueErrorByKey[idea.key],
+                    onNearby: {
+                        Task { await activities.toggleVenues(for: idea, origin: vm.origin) }
+                    }
+                )
+            }
+        }
+    }
+
+    private func activityPicker(
+        title: String,
+        selection: Binding<String>,
+        options: [String],
+        label: @escaping (String) -> String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(Cute.rounded(12, .semibold)).foregroundStyle(Cute.ink.opacity(0.6))
+            Picker(title, selection: selection) {
+                ForEach(options, id: \.self) { opt in
+                    Text(label(opt)).tag(opt)
+                }
+            }
+            .pickerStyle(.menu)
+            .tint(Cute.ink)
+            .padding(6)
+            .background(RoundedRectangle(cornerRadius: 12).fill(.white))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Cute.line, lineWidth: 2))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: Constraints (body)
+
+    private var constraintsBody: some View {
         VStack(alignment: .leading, spacing: 14) {
-            cardTitle("Trip constraints", symbol: "slider.horizontal.3")
+            Text(zh ? "出行约束" : "Trip constraints")
+                .font(Cute.rounded(15, .bold))
+                .foregroundStyle(Cute.ink.opacity(0.75))
 
             labeled("Home base") {
                 TextField("City, State", text: $vm.originLabel)
@@ -141,7 +362,6 @@ struct ContentView: View {
             preferenceChips
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .stickerCard()
     }
 
     private var tripTypePicker: some View {
@@ -170,11 +390,13 @@ struct ContentView: View {
         FlowChips(prefs: Preference.allCases, selected: vm.preferences) { vm.togglePreference($0) }
     }
 
-    // MARK: Search
+    // MARK: Search (body)
 
-    private var searchCard: some View {
+    private var searchBody: some View {
         VStack(alignment: .leading, spacing: 12) {
-            cardTitle("Describe your ideal trip", symbol: "sparkles")
+            Text(zh ? "描述想去的感觉" : "Describe your ideal trip")
+                .font(Cute.rounded(15, .bold))
+                .foregroundStyle(Cute.ink.opacity(0.75))
             TextField("e.g. 想附近找个可以冲浪的地方", text: $vm.query, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(Cute.rounded(15, .medium))
@@ -193,17 +415,45 @@ struct ContentView: View {
             .disabled(vm.isLoading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .stickerCard()
     }
 
     // MARK: Candidates
 
+    private var candidatesByScope: [(scope: String, title: String, items: [Candidate])] {
+        let order = ["local", "regional", "distant", "fly"]
+        let grouped = Dictionary(grouping: vm.candidates) { $0.resolvedGroup }
+        return order.compactMap { key in
+            guard let items = grouped[key], !items.isEmpty else { return nil }
+            return (key, items[0].scopeTitle, items)
+        }
+    }
+
     private var candidatesCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let groups = candidatesByScope
+        let showAwayBanner = groups.contains(where: { $0.scope == "distant" || $0.scope == "fly" })
+            && groups.contains(where: { $0.scope == "local" || $0.scope == "regional" })
+        return VStack(alignment: .leading, spacing: 12) {
             cardTitle(vm.searchPath == "poi" ? "Nearby places" : "Options within range",
                       symbol: "mappin.and.ellipse")
-            ForEach(vm.candidates) { c in
-                candidateCell(c)
+            ForEach(groups, id: \.scope) { group in
+                VStack(alignment: .leading, spacing: 8) {
+                    if showAwayBanner && (group.scope == "distant" || group.scope == "fly"),
+                       group.scope == groups.first(where: { $0.scope == "distant" || $0.scope == "fly" })?.scope {
+                        Text(group.items.first?.tripKindLabel.isEmpty == false
+                             ? group.items[0].tripKindLabel
+                             : "Away (not local play)")
+                            .font(Cute.rounded(14, .heavy))
+                            .foregroundStyle(Cute.ink)
+                    }
+                    if groups.count > 1 {
+                        Text(group.title)
+                            .font(Cute.rounded(13, .bold))
+                            .foregroundStyle(Cute.ink.opacity(0.65))
+                    }
+                    ForEach(group.items) { c in
+                        candidateCell(c)
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -253,7 +503,9 @@ struct ContentView: View {
                 HStack {
                     Text(c.name).font(Cute.rounded(16))
                     Spacer()
-                    Text(c.driveTime).font(Cute.rounded(13, .semibold)).foregroundStyle(Color(hex: 0xE0699A))
+                    Text(c.travelMode == "fly" ? "✈ \(c.driveTime)" : c.driveTime)
+                        .font(Cute.rounded(13, .semibold))
+                        .foregroundStyle(Color(hex: 0xE0699A))
                     Image(systemName: expanded ? "chevron.up.circle.fill" : "chevron.down.circle")
                         .foregroundStyle(Cute.pink)
                 }

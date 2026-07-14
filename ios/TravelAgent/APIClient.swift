@@ -97,8 +97,19 @@ actor APIClient {
         try await request("GET", "/me/persona", body: Empty())
     }
 
-    func personaQuiz() async throws -> QuizResponse {
-        try await request("GET", "/me/persona/quiz", body: Empty())
+    func personaQuiz(language: String = Config.language) async throws -> QuizResponse {
+        var comps = URLComponents(url: Config.baseURL, resolvingAgainstBaseURL: false)!
+        comps.path = Config.apiPrefix + "/me/persona/quiz"
+        comps.queryItems = [URLQueryItem(name: "language", value: language)]
+        var req = URLRequest(url: comps.url!)
+        req.httpMethod = "GET"
+        req.timeoutInterval = 30
+        if let token {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let (data, resp) = try await session.data(for: req)
+        try Self.check(resp, data)
+        return try Self.decoder.decode(QuizResponse.self, from: data)
     }
 
     func submitPersonaQuiz(_ answers: [String: String]) async throws -> Persona {
@@ -109,6 +120,16 @@ actor APIClient {
     func updatePersona(scores: [String: Double]) async throws -> Persona {
         struct Body: Encodable { let scores: [String: Double] }
         return try await request("PATCH", "/me/persona", body: Body(scores: scores))
+    }
+
+    // MARK: Activity ideas → nearby venues
+
+    func activities(_ body: ActivitiesRequest) async throws -> ActivitiesResponse {
+        try await post("/activities", body: body)
+    }
+
+    func activityVenues(_ body: ActivityVenuesRequest) async throws -> ActivityVenuesResponse {
+        try await post("/activities/venues", body: body)
     }
 
     // MARK: Core

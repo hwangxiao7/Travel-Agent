@@ -172,6 +172,42 @@ def build_memory_corpus(db: Session, user: User) -> list[MemoryDoc]:
                 weight=1.1,
             )
         )
+
+    # Account default prefs (quiz → chips) as a preference memory doc.
+    try:
+        prefs = json.loads(getattr(user, "default_prefs", "[]") or "[]")
+    except json.JSONDecodeError:
+        prefs = []
+    if prefs:
+        docs.append(
+            MemoryDoc(
+                id=f"prefs-chips:{user.id}",
+                kind="preference",
+                text="Preferred activity chips: " + ", ".join(str(p) for p in prefs),
+                weight=1.15,
+            )
+        )
+
+    # Travel persona summary (if stored) for RAG personalization.
+    try:
+        from app.db import TravelPersona
+        from app.services.persona import persona_from_row
+
+        row = db.scalar(select(TravelPersona).where(TravelPersona.user_id == user.id))
+        if row is not None:
+            persona = persona_from_row(row)
+            if persona.quiz or persona.confidence >= 0.2:
+                docs.append(
+                    MemoryDoc(
+                        id=f"persona:{user.id}",
+                        kind="preference",
+                        text=f"Travel persona {persona.type_code}: {persona.title}. {persona.blurb}",
+                        weight=1.25,
+                    )
+                )
+    except Exception:
+        pass
+
     return docs
 
 

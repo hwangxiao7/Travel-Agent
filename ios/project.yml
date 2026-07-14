@@ -18,8 +18,11 @@ targets:
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
+        # Public API for TestFlight / Release. Leave empty until you deploy HTTPS.
+        # Override at runtime: Account → Settings → Server / API.
+        BetaAPIBaseURL: ""
         # Allow plain-HTTP to the local dev backend (127.0.0.1 / LAN).
-        # Remove for production (use HTTPS).
+        # Prefer HTTPS for BetaAPIBaseURL in TestFlight.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
           NSAllowsArbitraryLoads: true

@@ -77,9 +77,12 @@ private struct AuthForm: View {
                 Text(mode == .login ? "Log in" : "Create account")
             }
             .buttonStyle(CutePillButton())
-            .disabled(auth.isBusy || email.isEmpty || password.isEmpty)
+            .disabled(auth.isBusy || email.isEmpty || password.isEmpty || (mode == .register && password.count < 6))
 
-            Text("Your trips, reviews & travel persona live in your account and personalize recommendations.")
+            Text(L10n.t(
+                "Use your email + password. No email verification for now — keep your password private.",
+                "用邮箱和密码登录。暂不验证邮箱，请妥善保管密码。"
+            ))
                 .font(Cute.rounded(12, .medium)).foregroundStyle(Cute.ink.opacity(0.6))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -149,7 +152,13 @@ private struct SignedInView: View {
             rowLabel("Change password", "lock.fill")
         }
         NavigationLink { DefaultPrefsView(auth: auth) } label: {
-            rowLabel("Default preferences", "heart.fill")
+            rowLabel(L10n.t("Default preferences", "默认偏好"), "heart.fill")
+        }
+        NavigationLink { LanguageSettingsView() } label: {
+            rowLabel(L10n.t("Language", "语言"), "globe")
+        }
+        NavigationLink { ServerEnvironmentView() } label: {
+            rowLabel(L10n.t("Server / API", "服务器 / API"), "antenna.radiowaves.left.and.right")
         }
         NavigationLink { AboutView() } label: {
             rowLabel("About", "info.circle.fill")
@@ -294,6 +303,10 @@ struct AboutView: View {
                     .multilineTextAlignment(.center)
                     .font(Cute.rounded(13, .medium)).foregroundStyle(Cute.ink.opacity(0.7))
                 Text("v0.1.0").font(Cute.rounded(12, .semibold)).foregroundStyle(Cute.ink.opacity(0.4))
+                Text(Config.baseURLDisplay)
+                    .font(Cute.rounded(11, .medium))
+                    .foregroundStyle(Cute.ink.opacity(0.45))
+                    .multilineTextAlignment(.center)
             }
             .padding(24)
             .stickerCard()
@@ -301,6 +314,168 @@ struct AboutView: View {
         }
         .navigationTitle("About")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - Language
+
+struct LanguageSettingsView: View {
+    @AppStorage("app.language") private var languageRaw: String = ""
+    @Environment(\.dismiss) private var dismiss
+
+    private var selection: Binding<String> {
+        Binding(
+            get: {
+                if languageRaw == "en" || languageRaw == "zh" { return languageRaw }
+                return Config.language
+            },
+            set: { newValue in
+                languageRaw = newValue
+                Config.language = newValue
+            }
+        )
+    }
+
+    var body: some View {
+        ZStack {
+            CutePaper()
+            VStack(alignment: .leading, spacing: 14) {
+                Text(L10n.t("App language", "应用语言"))
+                    .font(Cute.rounded(13, .semibold))
+                    .foregroundStyle(Cute.ink.opacity(0.6))
+                Picker("", selection: selection) {
+                    Text("English").tag("en")
+                    Text("中文").tag("zh")
+                }
+                .pickerStyle(.segmented)
+
+                Text(L10n.t(
+                    "This switches the UI and the language sent to the planner / Surprise me APIs.",
+                    "会切换界面语言，并告诉后端用中文还是英文做推荐与规划。"
+                ))
+                .font(Cute.rounded(13, .medium))
+                .foregroundStyle(Cute.ink.opacity(0.7))
+
+                Spacer()
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .navigationTitle(L10n.t("Language", "语言"))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - Server / API environment
+
+struct ServerEnvironmentView: View {
+    @State private var endpoint = Config.selectedEndpoint
+    @State private var customURL = Config.customBaseURLString
+    @State private var betaOverride = Config.betaBaseURLOverride
+    @State private var savedNote: String?
+
+    var body: some View {
+        ZStack {
+            CutePaper()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("TestFlight builds default to Beta. Local only works on Simulator or when the phone can reach your Mac.")
+                        .font(Cute.rounded(13, .medium))
+                        .foregroundStyle(Cute.ink.opacity(0.7))
+
+                    Text("Active: \(Config.baseURLDisplay)")
+                        .font(Cute.rounded(12, .semibold))
+                        .foregroundStyle(Cute.pink)
+
+                    ForEach(Config.Endpoint.allCases) { opt in
+                        Button {
+                            endpoint = opt
+                            Config.selectedEndpoint = opt
+                            savedNote = "Switched to \(opt.title). Re-login if auth fails."
+                        } label: {
+                            HStack {
+                                Image(systemName: endpoint == opt ? "largecircle.fill.circle" : "circle")
+                                    .foregroundStyle(Cute.pink)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(opt.title).font(Cute.rounded(15, .bold)).foregroundStyle(Cute.ink)
+                                    Text(subtitle(for: opt))
+                                        .font(Cute.rounded(12, .medium))
+                                        .foregroundStyle(Cute.ink.opacity(0.55))
+                                }
+                                Spacer()
+                            }
+                            .padding(12)
+                            .background(RoundedRectangle(cornerRadius: 14).fill(endpoint == opt ? Cute.pinkSoft : .white))
+                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Cute.line, lineWidth: 2))
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Beta API URL").font(Cute.rounded(12, .semibold)).foregroundStyle(Cute.ink.opacity(0.6))
+                        TextField("https://your-api.example.com", text: $betaOverride)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .font(Cute.rounded(14, .medium))
+                            .padding(10)
+                            .background(RoundedRectangle(cornerRadius: 12).fill(.white))
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Cute.line, lineWidth: 2))
+                        if Config.bundledBetaBaseURL.isEmpty && betaOverride.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Text("Info.plist BetaAPIBaseURL is empty — set a public HTTPS URL before external testers install.")
+                                .font(Cute.rounded(12, .medium))
+                                .foregroundStyle(Color(hex: 0xD6336C))
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Custom URL").font(Cute.rounded(12, .semibold)).foregroundStyle(Cute.ink.opacity(0.6))
+                        TextField("http://192.168.x.x:8000", text: $customURL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .font(Cute.rounded(14, .medium))
+                            .padding(10)
+                            .background(RoundedRectangle(cornerRadius: 12).fill(.white))
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Cute.line, lineWidth: 2))
+                    }
+
+                    Button {
+                        Config.betaBaseURLOverride = betaOverride
+                        Config.customBaseURLString = customURL
+                        Config.selectedEndpoint = endpoint
+                        savedNote = "Saved. Active: \(Config.baseURLDisplay)"
+                    } label: { Text("Save URLs") }
+                        .buttonStyle(CutePillButton())
+
+                    if let savedNote {
+                        Text(savedNote)
+                            .font(Cute.rounded(13, .medium))
+                            .foregroundStyle(Cute.ink.opacity(0.7))
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .stickerCard()
+                .padding(16)
+            }
+        }
+        .navigationTitle("Server / API")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            endpoint = Config.selectedEndpoint
+            customURL = Config.customBaseURLString
+            betaOverride = Config.betaBaseURLOverride
+        }
+    }
+
+    private func subtitle(for opt: Config.Endpoint) -> String {
+        switch opt {
+        case .local:
+            return Config.localBaseURL.absoluteString
+        case .beta:
+            let s = Config.resolvedBetaBaseURLString
+            return s.isEmpty ? "Not set yet" : s
+        case .custom:
+            return customURL.isEmpty ? "Enter a URL below" : customURL
+        }
     }
 }
 
@@ -362,6 +537,14 @@ struct PersonaCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .stickerCard(fill: Cute.cream, accent: Cute.butter)
         .onAppear {
+            order = persona.axes
+            scores = Dictionary(uniqueKeysWithValues: persona.axes.map { ($0.key, $0.score) })
+        }
+        .onChange(of: persona.typeCode) { _, _ in
+            order = persona.axes
+            scores = Dictionary(uniqueKeysWithValues: persona.axes.map { ($0.key, $0.score) })
+        }
+        .onChange(of: persona.title) { _, _ in
             order = persona.axes
             scores = Dictionary(uniqueKeysWithValues: persona.axes.map { ($0.key, $0.score) })
         }
@@ -565,7 +748,10 @@ struct PersonaQuizView: View {
                 CutePaper()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("A few quick questions to build your travel persona 🌸")
+                        Text(L10n.t(
+                            "A few quick questions to build your travel persona 🌸",
+                            "几个小问题，帮我们了解你的旅行人格 🌸"
+                        ))
                             .font(Cute.rounded(15, .medium)).foregroundStyle(Cute.ink.opacity(0.8))
                         ForEach(questions) { q in
                             VStack(alignment: .leading, spacing: 8) {
@@ -594,7 +780,7 @@ struct PersonaQuizView: View {
                                 if await auth.submitQuiz(answers) { dismiss() }
                             }
                         } label: {
-                            Text("See my persona ✨")
+                            Text(L10n.t("See my persona ✨", "查看我的人格 ✨"))
                         }
                         .buttonStyle(CutePillButton())
                         .disabled(answers.count < questions.count || auth.isBusy)
@@ -603,12 +789,12 @@ struct PersonaQuizView: View {
                 }
                 if loading { ProgressView().tint(Cute.pink) }
             }
-            .navigationTitle("Travel Persona")
+            .navigationTitle(L10n.t("Travel Persona", "旅行人格"))
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Close") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(L10n.t("Close", "关闭")) { dismiss() } } }
             .task {
                 loading = true
-                questions = (try? await APIClient.shared.personaQuiz().questions) ?? []
+                questions = (try? await APIClient.shared.personaQuiz(language: Config.language).questions) ?? []
                 loading = false
             }
         }

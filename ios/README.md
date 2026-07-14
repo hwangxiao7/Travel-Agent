@@ -35,10 +35,11 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ### 3. 配置后端地址
 
-- **模拟器 + Mac 本地后端**：`http://127.0.0.1:8000`（默认值）
-- **真机同 Wi-Fi**：把 `Config.baseURL` 改成 `http://<你的Mac局域网IP>:8000`
+- **模拟器 + Mac 本地后端**：默认 `Local` → `http://127.0.0.1:8000`
+- **真机同 Wi-Fi**：Account → Settings → **Server / API** → Custom，填 `http://<Mac局域网IP>:8000`
   - 查 IP：`ipconfig getifaddr en0`
-- 也可在 Scheme → Run → Arguments → Environment 里设 `BASE_URL`
+- **TestFlight Beta**：Release 默认走 `Beta`；在 `Info.plist` 的 `BetaAPIBaseURL` 填公网 `https://…`，或在 App 内 Settings 临时覆盖
+- 也可在 Scheme → Run → Arguments → Environment 里设 `BASE_URL`（优先级最高）
 
 ### 4. 允许明文 HTTP（仅本地开发）
 

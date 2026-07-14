@@ -16,6 +16,9 @@ _bearer = HTTPBearer(auto_error=False)
 
 ALGORITHM = "HS256"
 
+# Dummy hash so failed logins spend similar time whether the email exists or not.
+_DUMMY_PASSWORD_HASH = pwd_context.hash("travel-agent-dummy-password-not-a-user")
+
 
 def hash_password(password: str) -> str:
     # bcrypt truncates at 72 bytes; keep UX simple for MVP.

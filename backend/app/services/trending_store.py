@@ -7,6 +7,7 @@ from sqlalchemy import select
 from app.config import settings
 from app.db import TrendingSpot, get_engine, place_key
 from app.models.schemas import Place
+from app.services.geo import haversine_miles
 
 
 def _session():
@@ -21,6 +22,10 @@ def _csv_union(existing: str, new: set[str]) -> str:
     parts = {p for p in (existing or "").split(",") if p}
     parts |= new
     return ",".join(sorted(parts))
+
+
+def _tags_list(csv: str) -> list[str]:
+    return [t for t in (csv or "").split(",") if t]
 
 
 def upsert_spots(
@@ -44,6 +49,7 @@ def upsert_spots(
                     TrendingSpot.dest_key == dkey, TrendingSpot.place_key == pkey
                 )
             ).scalar_one_or_none()
+            tags_csv = ",".join(place.experience_tags) if place.experience_tags else ""
             if row is None:
                 session.add(
                     TrendingSpot(
@@ -57,6 +63,8 @@ def upsert_spots(
                         lng=place.lng,
                         platforms=",".join(sorted(sources)),
                         mention_count=1,
+                        experience_tags=tags_csv,
+                        blurb=place.blurb or "",
                         first_seen=now,
                         last_seen=now,
                     )
@@ -68,6 +76,11 @@ def upsert_spots(
                 row.last_seen = now
                 # Keep coords fresh (OSM may refine); harmless if identical.
                 row.lat, row.lng, row.kind = place.lat, place.lng, place.kind
+                # Merge experience tags; keep the latest non-empty blurb.
+                if place.experience_tags:
+                    row.experience_tags = _csv_union(row.experience_tags, set(place.experience_tags))
+                if place.blurb:
+                    row.blurb = place.blurb
                 updated += 1
         session.commit()
     finally:
@@ -97,19 +110,57 @@ def get_trending_places(dest_name: str, limit: int = 8) -> list[Place]:
     finally:
         session.close()
     rows.sort(key=lambda r: (_confidence(r), r.last_seen), reverse=True)
-    return [
-        Place(
-            name=r.name,
-            category=r.category or "viral",
-            kind=r.kind,  # type: ignore[arg-type]
-            lat=r.lat,
-            lng=r.lng,
-            note="",
-            recommended=True,
-            trending=True,
+    return [_row_to_place(r) for r in rows[:limit]]
+
+
+def _row_to_place(r: TrendingSpot) -> Place:
+    return Place(
+        name=r.name,
+        category=r.category or "viral",
+        kind=r.kind,  # type: ignore[arg-type]
+        lat=r.lat,
+        lng=r.lng,
+        note="",
+        recommended=True,
+        trending=True,
+        experience_tags=_tags_list(r.experience_tags),
+        blurb=r.blurb or "",
+    )
+
+
+def get_spots_near(lat: float, lng: float, radius_miles: float, limit: int = 60) -> list[dict]:
+    """Fresh trending spots near a coordinate, across ALL destinations.
+
+    Returns lightweight dicts (place + provenance + freshness) for the discovery
+    engine to rank by persona match. Spatial filter is a haversine scan — fine at
+    catalog scale; swap for PostGIS/geohash when the table grows large."""
+    cutoff = datetime.utcnow() - timedelta(days=settings.trending_stale_days)
+    now = datetime.utcnow()
+    session = _session()
+    try:
+        rows = list(
+            session.execute(
+                select(TrendingSpot).where(TrendingSpot.last_seen >= cutoff)
+            ).scalars()
         )
-        for r in rows[:limit]
-    ]
+    finally:
+        session.close()
+    out: list[dict] = []
+    for r in rows:
+        miles = haversine_miles(lat, lng, r.lat, r.lng)
+        if miles > radius_miles:
+            continue
+        out.append(
+            {
+                "place": _row_to_place(r),
+                "platforms": _tags_list(r.platforms),
+                "distance_miles": round(miles, 1),
+                "freshness_days": max(0, (now - r.last_seen).days),
+                "confidence": _confidence(r),
+            }
+        )
+    out.sort(key=lambda d: d["distance_miles"])
+    return out[:limit]
 
 
 def has_trending(dest_name: str) -> bool:

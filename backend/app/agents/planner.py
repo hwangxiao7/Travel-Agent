@@ -38,6 +38,23 @@ from app.services.rag_pipeline import corpus_has_semantic_focus
 from app.services.rag_pipeline import rag_pipeline
 from app.services.routing import drive_duration_hours, drive_durations_hours
 from app.services.social import social_highlights
+
+
+def _prefs_from_user(user) -> list[Preference]:
+    """Load account default preference chips (often set by persona quiz)."""
+    import json
+
+    try:
+        raw = json.loads(getattr(user, "default_prefs", "[]") or "[]")
+    except (TypeError, json.JSONDecodeError):
+        return []
+    out: list[Preference] = []
+    for p in raw:
+        try:
+            out.append(Preference(p))
+        except ValueError:
+            continue
+    return out
 from app.services.trending_store import get_trending_places
 
 
@@ -234,6 +251,12 @@ async def create_plan(
     from app.observability import atraced
 
     async with atraced("planner.create_plan"):
+        # Empty chip selection → fall back to account default prefs (from quiz).
+        effective_prefs = list(request.preferences)
+        if not effective_prefs and user is not None:
+            effective_prefs = _prefs_from_user(user)
+        request = request.model_copy(update={"preferences": effective_prefs})
+
         candidates = find_candidates(request)
         if not candidates:
             raise ValueError(
@@ -347,17 +370,24 @@ async def create_plan(
             framing_note=_framing_note(getattr(rag, "intent", None)),
         )
         itinerary = itinerary.model_copy(update={"guides": guides, "viral": viral})
+        from app.services.trip_scope import annotate_candidate
+
         candidate_payload = [
-            {
-                "name": c.destination.name,
-                "lat": c.destination.lat,
-                "lng": c.destination.lng,
-                "drive_time": c.drive_time,
-                "drive_hours": c.drive_hours,
-                "score": round(c.score, 2),
-                "highlight": getattr(c, "_rag_highlight", None) or c.destination.highlight,
-                "explanation": getattr(c, "_rag_explanation", None) or "",
-            }
+            annotate_candidate(
+                {
+                    "name": c.destination.name,
+                    "lat": c.destination.lat,
+                    "lng": c.destination.lng,
+                    "drive_time": c.drive_time,
+                    "drive_hours": c.drive_hours,
+                    "score": round(c.score, 2),
+                    "highlight": getattr(c, "_rag_highlight", None)
+                    or c.destination.highlight,
+                    "explanation": getattr(c, "_rag_explanation", None) or "",
+                    "travel_mode": "drive",
+                    "source": "corpus",
+                }
+            )
             for c in candidates
         ]
         return itinerary, candidate_payload
@@ -608,11 +638,26 @@ async def plan_for_poi(
     )
 
 
-def _corpus_has_focus_hit(ranked, intent) -> bool:
-    """Semantic gate: embedding similarity to LLM activity phrase, not keywords."""
+def _corpus_has_focus_hit(ranked, intent, *, semantic: bool = True) -> bool:
+    """Focus gate: embedding similarity to the LLM activity phrase.
+
+    Graceful degradation: when embeddings are unavailable (e.g. local model
+    offline), fall back to keyword overlap so free-text search still hits the
+    catalog instead of wrongly erroring with "couldn't find".
+    """
     if not has_focus_query(intent) or not ranked:
         return False
-    return corpus_has_semantic_focus(ranked)
+    if semantic and corpus_has_semantic_focus(ranked):
+        return True
+    # Keyword fallback (also the only signal when embeddings are down).
+    terms = [t.lower() for t in intent.focus_terms if len(t) >= 3]
+    if not terms:
+        return False
+    for r in ranked[:5]:
+        blob = r.doc.text.lower()
+        if any(t in blob for t in terms):
+            return True
+    return False
 
 
 async def search_destinations(
@@ -632,6 +677,8 @@ async def search_destinations(
     apply_intent_to_request_fields(intent, req)
 
     ui_prefs = [p.value for p in req.preferences]
+    if not ui_prefs and user is not None:
+        ui_prefs = [p.value for p in _prefs_from_user(user)]
     if has_focus_query(intent):
         ranking_prefs: list[str] = list(intent.preferences)
     else:
@@ -679,7 +726,9 @@ async def search_destinations(
             db.close()
 
     # Path B: free-text focus missed the curated corpus → nearby POI search.
-    use_poi = has_focus_query(intent) and not _corpus_has_focus_hit(rag.ranked, intent)
+    use_poi = has_focus_query(intent) and not _corpus_has_focus_hit(
+        rag.ranked, intent, semantic=rag.semantic
+    )
     if use_poi:
         pois = await search_nearby_pois(
             query=req.query,
@@ -736,7 +785,9 @@ async def search_destinations(
     # When there's no strong focus hit, fall through to the closest semantic
     # matches and tell the user they're approximate. Ranking already prevents
     # irrelevant park-spam, so the top result is the best-fitting real place.
-    approx = has_focus_query(intent) and not _corpus_has_focus_hit(rag.ranked, intent)
+    approx = has_focus_query(intent) and not _corpus_has_focus_hit(
+        rag.ranked, intent, semantic=rag.semantic
+    )
 
     top_doc = rag.ranked[0].doc
     rag_ctx = _rag_context_text(rag.context_blocks)

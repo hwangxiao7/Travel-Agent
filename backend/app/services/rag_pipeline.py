@@ -9,6 +9,7 @@ from typing import Any, Callable
 from app.knowledge.corpus import Doc, build_corpus, context_for
 from app.services.embeddings import Vector, embed_query, embed_texts
 from app.services.geo import estimate_drive_hours, haversine_miles
+from app.services.trip_scope import annotate_candidate, distance_preference
 from app.services.signals import WeatherCondition, signal_provider
 from app.services.query_understanding import (
     TravelIntent,
@@ -117,35 +118,39 @@ class RankedDestination:
     scores: ScoreBreakdown
 
     def to_candidate_dict(self, drive_time: str = "", drive_hours: float = 0.0) -> dict:
-        return {
-            "name": self.doc.dest_name,
-            "lat": self.doc.lat,
-            "lng": self.doc.lng,
-            "drive_time": drive_time,
-            "drive_hours": drive_hours,
-            "score": round(self.scores.final_score, 3),
-            "highlight": self.doc.highlight,
-            # Unified Activity fields (doc §7).
-            "activity_type": "destination",
-            "source": "fly" if self.doc.travel_mode == "fly" else "corpus",
-            "semantic_tags": list(self.doc.tags),
-            "matched_query_terms": self.scores.matched_query_terms,
-            "matched_tags": self.scores.matched_tags,
-            "semantic_score": round(self.scores.semantic_score, 3),
-            "keyword_score": round(self.scores.keyword_score, 3),
-            "distance_score": round(self.scores.distance_score, 3),
-            "personalization_score": round(self.scores.personalization_score, 3),
-            "explore_score": round(self.scores.explore_score, 3),
-            "search_score": round(self.scores.search_score, 3),
-            "tag_score": round(self.scores.tag_score, 3),
-            "scenery_score": round(self.scores.scenery_score, 3),
-            "weather_score": round(self.scores.weather_score, 3),
-            "popularity_score": round(self.scores.popularity_score, 3),
-            "freshness_score": round(self.scores.freshness_score, 3),
-            "negative_penalty": round(self.scores.negative_penalty, 3),
-            "final_score": round(self.scores.final_score, 3),
-            "explanation": self.scores.explanation,
-        }
+        return annotate_candidate(
+            {
+                "name": self.doc.dest_name,
+                "lat": self.doc.lat,
+                "lng": self.doc.lng,
+                "drive_time": drive_time,
+                "drive_hours": drive_hours,
+                "score": round(self.scores.final_score, 3),
+                "highlight": self.doc.highlight,
+                # Unified Activity fields (doc §7).
+                "activity_type": "destination",
+                "source": "fly" if self.doc.travel_mode == "fly" else "corpus",
+                "travel_mode": self.doc.travel_mode,
+                "semantic_tags": list(self.doc.tags),
+                "matched_query_terms": self.scores.matched_query_terms,
+                "matched_tags": self.scores.matched_tags,
+                "semantic_score": round(self.scores.semantic_score, 3),
+                "keyword_score": round(self.scores.keyword_score, 3),
+                "distance_score": round(self.scores.distance_score, 3),
+                "personalization_score": round(self.scores.personalization_score, 3),
+                "explore_score": round(self.scores.explore_score, 3),
+                "search_score": round(self.scores.search_score, 3),
+                "tag_score": round(self.scores.tag_score, 3),
+                "scenery_score": round(self.scores.scenery_score, 3),
+                "weather_score": round(self.scores.weather_score, 3),
+                "popularity_score": round(self.scores.popularity_score, 3),
+                "freshness_score": round(self.scores.freshness_score, 3),
+                "negative_penalty": round(self.scores.negative_penalty, 3),
+                "final_score": round(self.scores.final_score, 3),
+                "explanation": self.scores.explanation,
+            },
+            travel_mode=self.doc.travel_mode,
+        )
 
 
 @dataclass
@@ -189,8 +194,14 @@ def _explain(scores: ScoreBreakdown, doc: Doc, intent: TravelIntent) -> str:
         bits.append("differs from past dislikes")
     if scores.explore_score >= 0.75 and abs(scores.personalization_score) > 0.01:
         bits.append("new for you")
-    if scores.distance_score > 0.5 and not _wants_aurora(intent):
-        bits.append("nearby")
+    if scores.distance_score >= 0.65 and not _wants_aurora(intent):
+        bits.append("easy local fun")
+    elif scores.distance_score >= 0.40 and not _wants_aurora(intent):
+        bits.append("short getaway")
+    elif doc.travel_mode == "fly":
+        bits.append("away trip by air")
+    elif scores.distance_score < 0.40 and not _wants_aurora(intent):
+        bits.append("away trip by long drive")
     if scores.weather_score >= 0.85:
         bits.append("great for today's weather")
     if scores.popularity_score >= 0.75:
@@ -280,7 +291,8 @@ class RAGPipeline:
 
         miles = haversine_miles(origin_lat, origin_lng, doc.lat, doc.lng)
         hours = estimate_drive_hours(miles) if doc.travel_mode == "drive" else miles / 500.0 + 0.5
-        dist = max(0.0, 1.0 - hours / 8.0)
+        # Short-trip preference for drives; fly scored on its own axis.
+        dist = distance_preference(travel_mode=doc.travel_mode, hours=hours)
 
         # Doc §10 extra signals (pluggable source; heuristic by default).
         wx = signal_provider.weather_compat(text=doc.text, tags=doc.tags, weather=weather)

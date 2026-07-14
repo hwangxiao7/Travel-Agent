@@ -127,8 +127,14 @@ def _quiz_scores(quiz: dict) -> dict[str, float]:
     return out
 
 
-def compute_persona(db: Session, user: User) -> Persona:
-    """Derive persona from behavior + reviews + trips, blended with quiz answers."""
+def compute_persona(db: Session, user: User, *, quiz_weight: float = 0.45) -> Persona:
+    """Derive persona from behavior + reviews + trips, blended with quiz answers.
+
+    quiz_weight: fraction of quiz vs behavior when both exist (0..1).
+    Explicit quiz retakes pass a higher weight so answers actually move the persona.
+    """
+    quiz_weight = max(0.0, min(1.0, quiz_weight))
+    behavior_weight = 1.0 - quiz_weight
     acc: dict[str, float] = {}
     counts: dict[str, float] = {}
     n_signals = 0
@@ -186,7 +192,7 @@ def compute_persona(db: Session, user: User) -> Persona:
         b = behavior_scores.get(axis)
         q = quiz_scores.get(axis)
         if b is not None and q is not None:
-            scores[axis] = 0.45 * q + 0.55 * b
+            scores[axis] = quiz_weight * q + behavior_weight * b
         elif b is not None:
             scores[axis] = b
         elif q is not None:
@@ -194,10 +200,177 @@ def compute_persona(db: Session, user: User) -> Persona:
         else:
             scores[axis] = 50.0
 
-    confidence = min(1.0, n_signals * 0.1 + (0.4 if quiz_scores else 0.0))
+    confidence = min(1.0, n_signals * 0.1 + (0.55 if quiz_scores else 0.0))
     p = Persona(scores=scores, confidence=confidence, quiz=quiz)
     _label(p)
     return p
+
+
+def prefs_from_persona(p: Persona) -> list[str]:
+    """Map persona axes → Preference chip values for trip planner / discovery."""
+    s = p.scores
+    prefs: list[str] = []
+    if s.get("indoor_outdoor", 50) >= 58:
+        prefs.extend(["hiking", "forest"])
+    if s.get("culture_nature", 50) >= 58:
+        prefs.extend(["national-park", "forest"])
+    elif s.get("culture_nature", 50) <= 42:
+        prefs.append("city-walk")
+    if s.get("leisurely_active", 50) >= 58:
+        prefs.append("hiking")
+    if s.get("indoor_outdoor", 50) >= 55 and s.get("calm_adventurous", 50) >= 52:
+        prefs.append("beach")
+    if s.get("culture_nature", 50) <= 45 and s.get("quiet_social", 50) >= 55:
+        prefs.append("city-walk")
+    # Dedupe, keep order, cap.
+    return list(dict.fromkeys(prefs))[:4]
+
+
+def apply_quiz_to_user(db: Session, user: User, persona: Persona) -> None:
+    """After quiz: write taste snippets + default preference chips (so RAG/plan learn)."""
+    from app.services.taste_profile import record_snippet
+
+    prefs = prefs_from_persona(persona)
+    if prefs:
+        user.default_prefs = json.dumps(prefs)
+        db.commit()
+        db.refresh(user)
+
+    # Open-vocab taste so /api/activities + /api/discover personalize.
+    bits = [
+        f"Travel persona: {persona.title}. {persona.blurb}".strip(),
+        "Prefers: " + ", ".join(prefs) if prefs else "",
+    ]
+    for axis in AXES:
+        score = persona.scores.get(axis, 50.0)
+        if abs(score - 50) < 12:
+            continue
+        m = _AXIS_META[axis]
+        pole = m["high"] if score >= 50 else m["low"]
+        bits.append(f"Leans {pole.lower()} ({axis.replace('_', ' ')})")
+    text = " ".join(b for b in bits if b)
+    if text:
+        record_snippet(db, user, text, source="quiz", weight=1.2, polarity=1.0)
+
+
+def quiz_questions(language: str = "en") -> list[dict]:
+    """Return quiz questions; zh gets translated copy, same ids/leans."""
+    zh = (language or "en").lower().startswith("zh")
+    if not zh:
+        return QUIZ
+    out: list[dict] = []
+    for q in QUIZ:
+        t = _QUIZ_ZH.get(q["id"])
+        if not t:
+            out.append(q)
+            continue
+        opts = []
+        for o in q["options"]:
+            label = t["options"].get(o["id"], o["label"])
+            opts.append({**o, "label": label})
+        out.append({**q, "q": t["q"], "options": opts})
+    return out
+
+
+# Chinese copy for QUIZ (ids must match).
+_QUIZ_ZH: dict[str, dict] = {
+    "afternoon": {
+        "q": "有一个空闲的下午，你更想…",
+        "options": {
+            "trail": "去户外走走、徒步",
+            "cafe": "逛博物馆或咖啡馆",
+            "friends": "和朋友去热闹的地方",
+            "home": "在家安静充电",
+        },
+    },
+    "energy": {
+        "q": "理想的外出感觉是…",
+        "options": {
+            "thrill": "有点刺激、动起来",
+            "balanced": "动静平衡",
+            "calm": "轻松、休息",
+        },
+    },
+    "company": {
+        "q": "你最喜欢怎样探索…",
+        "options": {
+            "group": "一群人，热闹场所",
+            "partner": "和一个人，轻松随意",
+            "solo": "独自，安静角落",
+        },
+    },
+    "backdrop": {
+        "q": "选一个让你开心的场景：",
+        "options": {
+            "mountains": "山与森林",
+            "coast": "海边沙滩",
+            "city": "城市街道与美食",
+        },
+    },
+    "discover": {
+        "q": "你更想去…",
+        "options": {
+            "hidden": "本地小众宝藏",
+            "iconic": "必打卡的知名景点",
+        },
+    },
+    "mornings": {
+        "q": "周末早上，你更可能…",
+        "options": {
+            "workout": "出门徒步或运动",
+            "brunch": "早午餐 + 慢悠悠散步",
+            "sleepin": "睡懒觉",
+        },
+    },
+    "whim": {
+        "q": "一时兴起，你会答应…",
+        "options": {
+            "surf": "冲浪或攀岩体验课",
+            "newfood": "一家新的小馆子",
+            "exhibit": "快闪艺术展",
+            "drive": "开着车随便兜风",
+        },
+    },
+    "crowds": {
+        "q": "对于人多热闹的场面…",
+        "options": {
+            "love": "喜欢那种热闹",
+            "avoid": "更爱安静的地方",
+        },
+    },
+    "water": {
+        "q": "在水边，你会…",
+        "options": {
+            "inwater": "下水——游泳、冲浪、皮划艇",
+            "beside": "坐在旁边放松",
+            "meh": "不太喜欢水相关",
+        },
+    },
+    "planning": {
+        "q": "去一个新地方时，你会…",
+        "options": {
+            "wing": "随缘，走到哪算哪",
+            "loose": "有个大概想法",
+            "plan": "把细节都安排好",
+        },
+    },
+    "evening": {
+        "q": "理想的夜晚是…",
+        "options": {
+            "livemusic": "现场音乐或酒吧",
+            "dinner": "一顿安静的晚餐",
+            "stargaze": "找个安静地方看星星",
+        },
+    },
+    "naturedose": {
+        "q": "你最爱的自然剂量：",
+        "options": {
+            "summit": "登顶看大风景",
+            "forest": "安静的森林散步",
+            "park": "漂亮的城市公园",
+        },
+    },
+}
 
 
 def _label(p: Persona) -> None:
