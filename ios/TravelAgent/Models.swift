@@ -50,6 +50,7 @@ enum TripType: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
     var label: String { self == .dayTrip ? "Day trip" : "Weekend" }
     var iconName: String { self == .dayTrip ? "icon-daytrip" : "icon-weekend" }
+    var symbolFallback: String { self == .dayTrip ? "sun.max.fill" : "calendar" }
 }
 
 struct Location: Codable, Equatable {
@@ -481,10 +482,12 @@ struct ActivityIdea: Codable, Identifiable {
     var matchScore: Double = 0
     var blurb: String = ""
     var reason: String = ""
+    /// Shared vibe sticker key (e.g. vibe-water) — not one image per activity.
+    var iconKey: String = ""
 
     enum CodingKeys: String, CodingKey {
         case key, name, nameEn, nameZh, tags, durationH, energy, cost
-        case companion, indoor, inSeason, matchScore, blurb, reason
+        case companion, indoor, inSeason, matchScore, blurb, reason, iconKey
     }
 
     init(from decoder: Decoder) throws {
@@ -503,6 +506,7 @@ struct ActivityIdea: Codable, Identifiable {
         matchScore = try c.decodeIfPresent(Double.self, forKey: .matchScore) ?? 0
         blurb = try c.decodeIfPresent(String.self, forKey: .blurb) ?? ""
         reason = try c.decodeIfPresent(String.self, forKey: .reason) ?? ""
+        iconKey = try c.decodeIfPresent(String.self, forKey: .iconKey) ?? ""
     }
 }
 

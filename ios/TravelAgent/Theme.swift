@@ -198,23 +198,72 @@ struct CuteLoadingOverlay: View {
     }
 }
 
+/// A sticker illustration: bundled → disk LRU → optional remote /api/assets/{key}.
+/// Missing art never breaks layout (SF Symbol fallback).
+struct StickerImage: View {
+    enum Clip { case none, circle }
+
+    let name: String
+    var fallbackSymbol: String = "sparkles"
+    var size: CGFloat = 44
+    var contentMode: ContentMode = .fit
+    var clip: Clip = .none
+    var symbolColor: Color = Cute.pink
+    /// When true, miss on bundle/cache triggers a network fetch into LRU cache.
+    var allowRemote: Bool = false
+
+    @State private var remote: UIImage?
+
+    @ViewBuilder private var art: some View {
+        if let ui = remote ?? AssetStore.image(named: name) {
+            Image(uiImage: ui).resizable().aspectRatio(contentMode: contentMode)
+        } else {
+            Image(systemName: fallbackSymbol)
+                .font(.system(size: size * 0.5, weight: .bold))
+                .foregroundStyle(symbolColor)
+        }
+    }
+
+    var body: some View {
+        Group {
+            switch clip {
+            case .none:
+                art.frame(width: size, height: size)
+            case .circle:
+                art
+                    .frame(width: size, height: size)
+                    .background(Circle().fill(.white))
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(Cute.ink, lineWidth: 2.5))
+            }
+        }
+        .task(id: name) {
+            guard allowRemote, remote == nil, AssetStore.image(named: name) == nil else { return }
+            remote = await AssetStore.load(named: name, api: .shared)
+        }
+    }
+}
+
 /// Bouncy pill button label style.
 struct CutePillButton: ButtonStyle {
     var bg: Color = Cute.pink
     var fg: Color = .white
+    @Environment(\.isEnabled) private var isEnabled
+
     func makeBody(configuration: Configuration) -> some View {
+        let pressed = configuration.isPressed && isEnabled
         configuration.label
             .font(Cute.rounded(18))
             .foregroundStyle(fg)
             .padding(.vertical, 12)
             .frame(maxWidth: .infinity)
-            .background(Capsule().fill(bg))
-            .overlay(Capsule().stroke(Cute.ink, lineWidth: 2.5))
-            .background(Capsule().fill(Cute.ink).offset(
-                x: configuration.isPressed ? 0 : 3,
-                y: configuration.isPressed ? 0 : 3
+            .background(Capsule().fill(bg.opacity(isEnabled ? 1 : 0.45)))
+            .overlay(Capsule().stroke(Cute.ink.opacity(isEnabled ? 1 : 0.35), lineWidth: 2.5))
+            .background(Capsule().fill(Cute.ink.opacity(isEnabled ? 1 : 0.2)).offset(
+                x: pressed ? 0 : 3,
+                y: pressed ? 0 : 3
             ))
-            .offset(x: configuration.isPressed ? 3 : 0, y: configuration.isPressed ? 3 : 0)
+            .offset(x: pressed ? 3 : 0, y: pressed ? 3 : 0)
             .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
     }
 }

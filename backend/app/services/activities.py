@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.db import User
 from app.models.schemas import ActivitySuggestion
+from app.services.asset_vibes import vibe_for_activity
 from app.services.activity_catalog import ACTIVITIES, Activity
 from app.services.embeddings import embed_query, embed_texts
 
@@ -301,6 +302,7 @@ async def recommend_activities(
                 reason=_reason(
                     a, in_season, by_taste, zh, energy=energy, companion=companion
                 ),
+                icon_key=vibe_for_activity(a),
             )
         )
     return out

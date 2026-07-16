@@ -48,6 +48,7 @@ from app.models.schemas import (
     SocialTextImportRequest,
 )
 from app.routers.account import router as account_router
+from app.routers.assets import router as assets_router
 from app.routers.beta import router as beta_router
 from app.routers.taste import router as taste_router
 from app.services.airports import airport_by_iata, nearest_airport
@@ -84,11 +85,68 @@ setup_observability(app)
 app.include_router(account_router)
 app.include_router(taste_router)
 app.include_router(beta_router)
+app.include_router(assets_router)
 
 
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "destinations": len(DESTINATIONS)}
+
+
+# --- collective-intelligence funnel logging (best-effort, never blocks) ------
+
+def _intent_plan(preferences, trip_type: str) -> str:
+    from app.services.interaction_log import intent_for_plan
+
+    return intent_for_plan(preferences, trip_type)
+
+
+def _log_shown(user, *, surface: str, intent_key: str, candidates: list[dict], kind: str) -> None:
+    if user is None or not candidates:
+        return
+    from app.services.interaction_log import log_events
+
+    events = [
+        {
+            "stage": "shown",
+            "surface": surface,
+            "intent_key": intent_key,
+            "item_name": c.get("name", ""),
+            "item_kind": kind,
+        }
+        for c in candidates[:5]
+        if c.get("name")
+    ]
+    log_events(user, events)
+
+
+def _log_activity_shown(user, request, acts) -> None:
+    if user is None or not acts:
+        return
+    from app.services.interaction_log import intent_for_activities, log_events
+
+    intent = intent_for_activities(request.energy, request.companion)
+    events = [
+        {
+            "stage": "shown",
+            "surface": "activities",
+            "intent_key": intent,
+            "item_key": a.key,
+            "item_name": a.name_en,
+            "item_kind": "activity",
+        }
+        for a in acts[:5]
+    ]
+    log_events(user, events)
+
+
+def _log_selected(user, *, surface: str, item_key: str, item_name: str, kind: str) -> None:
+    if user is None:
+        return
+    from app.services.interaction_log import log_event
+
+    log_event(user, stage="selected", surface=surface,
+              item_key=item_key, item_name=item_name, item_kind=kind)
 
 
 @app.get("/api/geocode")
@@ -106,6 +164,13 @@ async def plan_trip(
             itinerary, candidates = await create_plan(request, user=user)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        _log_shown(
+            user,
+            surface="plan",
+            intent_key=_intent_plan(request.preferences, request.trip_type),
+            candidates=candidates,
+            kind="destination",
+        )
         return PlanResponse(itinerary=itinerary, candidates=candidates)
 
 
@@ -118,6 +183,13 @@ async def search(
         itinerary, candidates, semantic, meta = await search_destinations(request, user=user)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    _log_shown(
+        user,
+        surface="search",
+        intent_key=_intent_plan(request.preferences, request.trip_type),
+        candidates=candidates,
+        kind="destination",
+    )
     return SearchResponse(
         itinerary=itinerary,
         candidates=candidates,
@@ -331,11 +403,15 @@ async def activities(
             language=request.language,
             k=request.k,
         )
+        _log_activity_shown(user, request, acts)
         return ActivitiesResponse(activities=acts)
 
 
 @app.post("/api/activities/venues", response_model=ActivityVenuesResponse)
-async def activity_venues(request: ActivityVenuesRequest):
+async def activity_venues(
+    request: ActivityVenuesRequest,
+    user: User | None = Depends(get_optional_user),
+):
     """Given an activity type, find nearby concrete places to actually go.
 
     e.g. farmers_market → farmers markets; farm_animals → petting farm / zoo / cat cafe.
@@ -353,6 +429,9 @@ async def activity_venues(request: ActivityVenuesRequest):
             )
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
+        # Resolving venues for a picked activity is a strong interest signal.
+        _log_selected(user, surface="venues", item_key=activity.key,
+                      item_name=activity.name_en, kind="activity")
         zh = request.language.lower().startswith("zh")
         return ActivityVenuesResponse(
             activity_key=activity.key,

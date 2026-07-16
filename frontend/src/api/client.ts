@@ -10,7 +10,9 @@ import type {
   QuizQuestion,
   TripType,
 } from '../types'
-import { apiUrl, type EndpointKey } from './endpoints'
+import { apiUrl, assetUrl, type EndpointKey } from './endpoints'
+
+export { assetUrl }
 
 const TOKEN_KEY = 'spontaneous-travel-token'
 

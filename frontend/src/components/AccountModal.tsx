@@ -151,7 +151,7 @@ export function AccountModal({ open, onClose, user, onUser }: Props) {
         ) : (
           <div className="account-body">
             <div className="profile-card">
-              <img src="/icons/mascot.png" alt="" className="mascot-sm" />
+              <img src="/icons/mascot.webp" alt="" className="mascot-sm" />
               <div>
                 <strong>{user.display_name || user.email}</strong>
                 <p className="muted small">{user.email}</p>

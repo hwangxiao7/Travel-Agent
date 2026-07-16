@@ -154,7 +154,7 @@ export default function App() {
           onClick={() => setShowAccount(true)}
           aria-label={t('account.title')}
         >
-          <img src="/icons/mascot.png" alt="" />
+          <img src="/icons/mascot.webp" alt="" />
           <span className={`badge ${user ? 'ok' : 'plus'}`}>{user ? '✓' : '+'}</span>
         </button>
       </header>
@@ -202,7 +202,7 @@ export default function App() {
       {loading && (
         <div className="loading-overlay">
           <div className="loading-card">
-            <img src="/icons/mascot.png" alt="" className="bounce" />
+            <img src="/icons/mascot.webp" alt="" className="bounce" />
             <strong>{t('load.title')}</strong>
             <span className="muted">{t('load.sub')}</span>
           </div>

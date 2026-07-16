@@ -30,3 +30,9 @@ export function apiUrl(key: EndpointKey, query?: Record<string, string>): string
   }
   return url
 }
+
+/** Server asset by key — used when a local /icons/{key}.webp is missing. */
+export function assetUrl(key: string): string {
+  const k = key.trim().replace(/_/g, '-')
+  return `${API_BASE}/api/assets/${encodeURIComponent(k)}`
+}

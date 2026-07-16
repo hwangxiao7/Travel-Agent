@@ -30,12 +30,20 @@ struct ActivityIdeaCell: View {
     }
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(idea.name).font(Cute.rounded(16, .bold)).foregroundStyle(Cute.ink)
-            Spacer()
-            Text(String(format: "%.2f", idea.matchScore))
-                .font(Cute.rounded(12, .semibold))
-                .foregroundStyle(Cute.ink.opacity(0.45))
+        HStack(alignment: .center, spacing: 10) {
+            StickerImage(
+                name: idea.iconKey.isEmpty ? "mascot" : idea.iconKey,
+                fallbackSymbol: "sparkles",
+                size: 48,
+                allowRemote: true
+            )
+            VStack(alignment: .leading, spacing: 2) {
+                Text(idea.name).font(Cute.rounded(16, .bold)).foregroundStyle(Cute.ink)
+                Text(String(format: "%.2f", idea.matchScore))
+                    .font(Cute.rounded(12, .semibold))
+                    .foregroundStyle(Cute.ink.opacity(0.45))
+            }
+            Spacer(minLength: 0)
         }
     }
 

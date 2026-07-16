@@ -71,6 +71,8 @@ export interface ActivityIdea {
   match_score: number
   blurb: string
   reason: string
+  /** Shared vibe sticker key (e.g. vibe-water). */
+  icon_key?: string
 }
 
 export interface ActivityVenue {
@@ -132,11 +134,11 @@ export const PREFERENCES: Preference[] = [
 ]
 
 export const PREF_ICONS: Record<Preference, string> = {
-  'national-park': '/icons/icon-national-park.png',
-  hiking: '/icons/icon-hiking.png',
-  'city-walk': '/icons/icon-city-walk.png',
-  forest: '/icons/icon-forest.png',
-  beach: '/icons/icon-beach.png',
+  'national-park': '/icons/icon-national-park.webp',
+  hiking: '/icons/icon-hiking.webp',
+  'city-walk': '/icons/icon-city-walk.webp',
+  forest: '/icons/icon-forest.webp',
+  beach: '/icons/icon-beach.webp',
 }
 
 export const SF_DEFAULT: Location = {

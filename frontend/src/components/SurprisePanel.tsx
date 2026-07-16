@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { fetchActivities, fetchActivityVenues } from '../api/client'
 import { useI18n } from '../i18n'
 import type { ActivityIdea, ActivityVenue, Location } from '../types'
+import { AssetImg } from './AssetImg'
 
 interface Props {
   origin: Location
@@ -138,6 +139,7 @@ export function SurprisePanel({ origin }: Props) {
         {ideas.map((idea) => (
           <li key={idea.key} className="idea-card">
             <div className="idea-head">
+              <AssetImg iconKey={idea.icon_key || 'mascot'} alt={idea.name} size={48} />
               <strong>{idea.name}</strong>
               <span className="chip">{idea.duration_h ? `${idea.duration_h}h` : ''}</span>
             </div>

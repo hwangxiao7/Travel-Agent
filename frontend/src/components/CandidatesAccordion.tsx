@@ -21,13 +21,13 @@ function groupKey(c: Candidate) {
 function iconFor(c: Candidate) {
   const tags = c.semantic_tags || []
   for (const t of tags) {
-    if (t === 'national-park') return '/icons/icon-national-park.png'
-    if (t === 'hiking') return '/icons/icon-hiking.png'
-    if (t === 'city-walk') return '/icons/icon-city-walk.png'
-    if (t === 'forest') return '/icons/icon-forest.png'
-    if (t === 'beach') return '/icons/icon-beach.png'
+    if (t === 'national-park') return '/icons/icon-national-park.webp'
+    if (t === 'hiking') return '/icons/icon-hiking.webp'
+    if (t === 'city-walk') return '/icons/icon-city-walk.webp'
+    if (t === 'forest') return '/icons/icon-forest.webp'
+    if (t === 'beach') return '/icons/icon-beach.webp'
   }
-  return '/icons/mascot.png'
+  return '/icons/mascot.webp'
 }
 
 export function CandidatesAccordion({

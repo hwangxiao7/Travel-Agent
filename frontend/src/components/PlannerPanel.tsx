@@ -37,7 +37,7 @@ export function PlannerPanel(props: Props) {
           className={`pref-chip ${props.tripType === 'day-trip' ? 'on' : ''}`}
           onClick={() => props.onTripType('day-trip')}
         >
-          <img src="/icons/icon-daytrip.png" alt="" />
+          <img src="/icons/icon-daytrip.webp" alt="" />
           {t('planner.day')}
         </button>
         <button
@@ -45,7 +45,7 @@ export function PlannerPanel(props: Props) {
           className={`pref-chip ${props.tripType === 'weekend' ? 'on' : ''}`}
           onClick={() => props.onTripType('weekend')}
         >
-          <img src="/icons/icon-weekend.png" alt="" />
+          <img src="/icons/icon-weekend.webp" alt="" />
           {t('planner.weekend')}
         </button>
       </div>

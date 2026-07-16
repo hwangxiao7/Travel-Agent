@@ -132,6 +132,17 @@ actor APIClient {
         try await post("/activities/venues", body: body)
     }
 
+    /// Raw bytes for a sticker key (webp/png). Used by AssetStore LRU.
+    func fetchAssetData(key: String) async throws -> Data {
+        var comps = URLComponents(url: Config.baseURL, resolvingAgainstBaseURL: false)!
+        comps.path = Config.apiPrefix + "/assets/" + key
+        var req = URLRequest(url: comps.url!)
+        req.timeoutInterval = 30
+        let (data, resp) = try await session.data(for: req)
+        try Self.check(resp, data)
+        return data
+    }
+
     // MARK: Core
 
     private struct Empty: Encodable {}
@@ -153,8 +164,11 @@ actor APIClient {
         if let token {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-        // Search / plan can take 10-30s (LLM + external APIs). Give it room.
-        req.timeoutInterval = 60
+        // Search / plan chain multiple slow LLM + external API calls (the summary
+        // and grounded-itinerary generations alone can each take ~20-50s through
+        // the gateway). Give it generous room so a slow-but-valid plan returns
+        // instead of surfacing a confusing "request timed out".
+        req.timeoutInterval = 120
         if !(body is Empty) {
             req.httpBody = try Self.encoder.encode(body)
         }

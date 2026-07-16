@@ -230,6 +230,8 @@ class ActivitySuggestion(BaseModel):
     match_score: float = 0.0
     blurb: str = ""
     reason: str = ""
+    # Shared vibe sticker key (e.g. vibe-water) — not one image per activity.
+    icon_key: str = ""
 
 
 class ActivitiesRequest(BaseModel):
@@ -443,6 +445,7 @@ class UserOut(BaseModel):
     home_lat: float = 0.0
     home_lng: float = 0.0
     default_prefs: list[Preference] = Field(default_factory=list)
+    crowd_opt_out: bool = False
 
 
 class AuthResponse(BaseModel):
@@ -530,6 +533,8 @@ class ProfileUpdateRequest(BaseModel):
     home_lat: float | None = None
     home_lng: float | None = None
     default_prefs: list[Preference] | None = None
+    # Opt out of contributing behavior to the anonymized crowd/collective signals.
+    crowd_opt_out: bool | None = None
 
 
 class ChangePasswordRequest(BaseModel):

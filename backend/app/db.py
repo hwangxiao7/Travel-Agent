@@ -41,6 +41,9 @@ class User(Base):
     default_prefs: Mapped[str] = mapped_column(Text, default="[]")  # JSON list of Preference values
     # Bumped on password change / logout-all → invalidates older JWTs.
     token_version: Mapped[int] = mapped_column(Integer, default=0)
+    # Collective-intelligence opt-out: when True, this user's behavior is NOT
+    # logged into the crowd/collaborative aggregates (privacy: opt-out honored).
+    crowd_opt_out: Mapped[bool] = mapped_column(Integer, default=0)
 
     trips: Mapped[list[Trip]] = relationship(back_populates="user", cascade="all, delete-orphan")
     reviews: Mapped[list[PlaceReview]] = relationship(
@@ -102,6 +105,64 @@ class FeedbackEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class InteractionEvent(Base):
+    """Full-funnel behavior log for the collective-intelligence layer.
+
+    Captures the "想做什么 → 选了什么 → 去了哪 → 反馈如何" funnel with the
+    persona snapshot at event time, so cross-user aggregates can be sliced by
+    personality. Only written for opted-in, logged-in users.
+
+    stage:   shown | selected | saved | rated | skipped
+    surface: plan | search | activities | venues | trip | review | feedback
+    """
+
+    __tablename__ = "interaction_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    stage: Mapped[str] = mapped_column(String(16), index=True)
+    surface: Mapped[str] = mapped_column(String(16), default="")
+    # What the user wanted (coarse, aggregatable): e.g. "act:high|friends" or
+    # "plan:forest,hiking" — empty when not applicable (e.g. a save with no intent).
+    intent_key: Mapped[str] = mapped_column(String(120), default="", index=True)
+    item_key: Mapped[str] = mapped_column(String(220), default="", index=True)  # normalized
+    item_name: Mapped[str] = mapped_column(String(200), default="")
+    item_kind: Mapped[str] = mapped_column(String(16), default="")  # activity | destination | place
+    outcome_value: Mapped[float] = mapped_column(Float, default=0.0)  # rating for RATED, else 0/1
+    # Persona at event time: "s0,s1,s2,s3,s4,s5;conf" (6 axis scores + confidence).
+    persona_snapshot: Mapped[str] = mapped_column(String(80), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class CrowdSignal(Base):
+    """Aggregated cross-user affinity, keyed by persona bucket × item.
+
+    Output of the nightly rollup over InteractionEvent. `bucket_key` is emitted at
+    several backoff granularities (specific → general → "*") so serving can fall
+    back when a narrow bucket lacks enough samples. k-anonymity is enforced at
+    read time (only buckets with n_users >= K are served).
+    """
+
+    __tablename__ = "crowd_signals"
+    __table_args__ = (
+        UniqueConstraint("bucket_key", "item_key", name="uq_bucket_item"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bucket_key: Mapped[str] = mapped_column(String(120), index=True)
+    item_key: Mapped[str] = mapped_column(String(220), index=True)
+    item_name: Mapped[str] = mapped_column(String(200), default="")
+    item_kind: Mapped[str] = mapped_column(String(16), default="")
+    n_users: Mapped[int] = mapped_column(Integer, default=0)  # distinct users (k-anonymity)
+    n_shown: Mapped[int] = mapped_column(Integer, default=0)
+    n_selected: Mapped[int] = mapped_column(Integer, default=0)
+    n_saved: Mapped[int] = mapped_column(Integer, default=0)
+    n_rated: Mapped[int] = mapped_column(Integer, default=0)
+    rating_sum: Mapped[float] = mapped_column(Float, default=0.0)
+    affinity: Mapped[float] = mapped_column(Float, default=0.0)  # precomputed serve score 0..1
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class TrendingSpot(Base):
     """A real place distilled from social media, verified against OSM.
 
@@ -153,6 +214,24 @@ class TasteSnippet(Base):
     weight: Mapped[float] = mapped_column(Float, default=1.0)
     polarity: Mapped[float] = mapped_column(Float, default=1.0)  # +like / -dislike
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class MediaAsset(Base):
+    """Catalog row for a sticker/illustration file under knowledge/assets/.
+
+    Bytes live on disk (not in the row) so the DB stays small; clients pull by
+    key into an on-device LRU cache. Request path never generates images.
+    """
+
+    __tablename__ = "media_assets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    kind: Mapped[str] = mapped_column(String(24), default="vibe")  # vibe | core
+    filename: Mapped[str] = mapped_column(String(200), default="")
+    mime: Mapped[str] = mapped_column(String(80), default="image/webp")
+    byte_size: Mapped[int] = mapped_column(Integer, default=0)
+    version: Mapped[int] = mapped_column(Integer, default=1)
 
 
 class TravelPersona(Base):
@@ -224,6 +303,7 @@ def _ensure_sqlite_columns(engine) -> None:
             "home_lng": "FLOAT DEFAULT 0.0",
             "default_prefs": "TEXT DEFAULT '[]'",
             "token_version": "INTEGER DEFAULT 0",
+            "crowd_opt_out": "INTEGER DEFAULT 0",
         },
     }
     with engine.begin() as conn:
@@ -240,6 +320,20 @@ def init_db() -> None:
     engine = get_engine()
     Base.metadata.create_all(bind=engine)
     _ensure_sqlite_columns(engine)
+    # Index sticker files into media_assets (no-op if folder empty / missing).
+    try:
+        from app.services.assets import sync_assets_from_disk
+
+        factory = SessionLocal
+        if factory is None:
+            return
+        db = factory()
+        try:
+            sync_assets_from_disk(db)
+        finally:
+            db.close()
+    except Exception:
+        pass
 
 
 def get_db():
