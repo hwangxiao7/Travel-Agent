@@ -388,20 +388,18 @@ async def extract_viral_places(
     if not posts:
         return []
     corpus = "\n".join(f"- {p.title}" for p in posts[:12])
-    prompt = (
-        "You extract real, visitable place names (restaurants, cafes, shops, "
-        "attractions, viewpoints, neighborhoods) mentioned in social travel posts.\n"
-        f"Destination area: {dest_name}\n"
-        'Return ONLY JSON like {"places": [{"name_en": "17-Mile Drive, Pebble Beach", '
-        '"name_local": "十七英里"}]}.\n'
-        "- name_en: English or romanized proper name that a map service can geocode; "
-        "translate/transliterate if the post is in another language, and add the city "
-        "when helpful.\n"
-        "- name_local: the name as travelers would recognize it (original script ok).\n"
-        "No emojis, no generic words like 'food' or 'view'. Max 8 items, deduplicated.\n\n"
-        f"Posts:\n{corpus}"
+    system = (
+        "Extract real, visitable place names (restaurants, cafes, shops, "
+        "attractions, viewpoints, neighborhoods) from social travel posts.\n"
+        'Return ONLY JSON like {"places":[{"name_en":"17-Mile Drive, Pebble '
+        'Beach","name_local":"十七英里"}]}.\n'
+        "- name_en: English/romanized proper name a map service can geocode; "
+        "translate/transliterate non-English posts and add the city when helpful.\n"
+        "- name_local: the name travelers recognize (original script ok).\n"
+        "No emojis, no generic words like 'food' or 'view'. Max 8, deduplicated."
     )
-    raw = await generate_summary(prompt, json_mode=True)
+    prompt = f"Destination area: {dest_name}\nPosts:\n{corpus}"
+    raw = await generate_summary(prompt, json_mode=True, system=system)
     if not raw:
         return []
     try:
@@ -438,19 +436,21 @@ async def enrich_experiences(spots: list[Place], context: str, language: str) ->
     if not spots:
         return
     names = "\n".join(f"- {s.name}" for s in spots)
-    prompt = (
+    system = (
         "For each place, infer the EXPERIENCE it offers and label it for taste "
-        "matching. Use open-vocabulary lowercase tags describing vibe/activity/"
-        "audience/budget, e.g. outdoor, foraging, hands-on, water, hiking, food, "
-        "nightlife, romantic, family, solo, quiet, hidden-gem, photography, "
-        "adventure, relaxing, budget, luxury.\n"
-        "Also write a neutral one-line blurb (your own words, no copied captions).\n"
-        f"Context (social posts, for inference only):\n{context[:1500]}\n\n"
-        f"Places:\n{names}\n\n"
+        "matching. Use open-vocabulary lowercase tags for vibe/activity/audience/"
+        "budget, e.g. outdoor, foraging, hands-on, water, hiking, food, nightlife, "
+        "romantic, family, solo, quiet, hidden-gem, photography, adventure, "
+        "relaxing, budget, luxury. Also write a neutral one-line blurb (your own "
+        "words, no copied captions).\n"
         'Return ONLY JSON: {"items":[{"name":"...","tags":["..."],"blurb":"..."}]}. '
         "Max 6 tags each."
     )
-    raw = await generate_summary(prompt, json_mode=True)
+    prompt = (
+        f"Context (social posts, for inference only):\n{context[:1500]}\n\n"
+        f"Places:\n{names}"
+    )
+    raw = await generate_summary(prompt, json_mode=True, system=system)
     if not raw:
         return
     try:

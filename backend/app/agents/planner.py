@@ -39,6 +39,21 @@ from app.services.rag_pipeline import rag_pipeline
 from app.services.routing import drive_duration_hours, drive_durations_hours
 from app.services.social import social_highlights
 
+# Shared trip-blurb instructions. Fixed guidance goes in the system message so
+# each summary call only pays for its distinct facts (and the prefix caches).
+_SUMMARY_SYSTEM = (
+    "You write short trip blurbs: 2-3 sentences, enthusiastic but practical. "
+    "Keep place names in English."
+)
+
+
+def _summary_prompt(facts: list[str], language: str, tone: str = "") -> str:
+    """Assemble a trip-summary user prompt from non-empty fact lines."""
+    body = "\n".join(f for f in facts if f)
+    if tone:
+        body += f"\nTone: {tone}"
+    return f"{body}\nRespond in {lang_name(language)}."
+
 
 def _prefs_from_user(user) -> list[Preference]:
     """Load account default preference chips (often set by persona quiz)."""
@@ -326,29 +341,38 @@ async def create_plan(
         await _refine_drive_times(request.origin, candidates)
         top = candidates[0]
         alts = [c.destination.name for c in candidates[1:3]]
-        weather, (food, fun, events), (guides, viral) = await asyncio.gather(
-            fetch_weather_note(top.destination.lat, top.destination.lng, request.language),
+
+        # Weather is effectively instant (default text when no key) and the
+        # summary prompt depends on it, so resolve it first.
+        weather = await fetch_weather_note(
+            top.destination.lat, top.destination.lng, request.language
+        )
+
+        rag_ctx = _rag_context_text(rag.context_blocks)
+        summary_prompt = _summary_prompt(
+            [
+                "Spontaneous drive trip.",
+                f"Origin: {request.origin.label or 'user location'}",
+                f"Destination: {top.destination.name} ({top.destination.highlight})",
+                f"Drive: {top.drive_time}",
+                f"Trip type: {request.trip_type}",
+                f"Preferences: {', '.join(p.value for p in request.preferences) or 'general outdoor'}",
+                f"Weather: {weather}",
+                f"History: {profile_note}" if profile_note else "",
+                f"Context: {rag_ctx[:500]}" if rag_ctx else "",
+            ],
+            request.language,
+        )
+        # The summary LLM call and the OSM/social lookups are independent and each
+        # take ~15-20s. Run them concurrently instead of back-to-back so the wait
+        # overlaps rather than stacks.
+        summary, (food, fun, events), (guides, viral) = await asyncio.gather(
+            generate_summary(summary_prompt, system=_SUMMARY_SYSTEM),
             _local_highlights(top.destination.lat, top.destination.lng, request.start_date),
             _social_for(
                 top.destination.name, top.destination.lat, top.destination.lng, request.language
             ),
         )
-
-        rag_ctx = _rag_context_text(rag.context_blocks)
-        summary_prompt = (
-            f"Write 2-3 sentences for a spontaneous trip plan.\n"
-            f"Origin: {request.origin.label or 'user location'}\n"
-            f"Destination: {top.destination.name} ({top.destination.highlight})\n"
-            f"Drive: {top.drive_time}\n"
-            f"Trip type: {request.trip_type}\n"
-            f"Preferences: {', '.join(p.value for p in request.preferences) or 'general outdoor'}\n"
-            f"Weather: {weather}\n"
-            f"{('Traveler history: ' + profile_note) if profile_note else ''}\n"
-            f"{('Retrieved context: ' + rag_ctx[:500]) if rag_ctx else ''}\n"
-            f"Tone: enthusiastic but practical.\n"
-            f"Respond in {lang_name(request.language)}. Keep place names in English."
-        )
-        summary = await generate_summary(summary_prompt)
         if not summary:
             summary = tr(
                 "summary_fallback",
@@ -433,17 +457,18 @@ async def plan_for_destination(
         _social_for(dest.name, dest.lat, dest.lng, req.language),
     )
 
-    summary_prompt = (
-        f"Write 2-3 sentences for a spontaneous trip plan.\n"
-        f"Origin: {req.origin.label or 'user location'}\n"
-        f"Destination: {dest.name} ({dest.highlight})\n"
-        f"Drive: {scored.drive_time}\n"
-        f"Trip type: {req.trip_type}\n"
-        f"Weather: {weather}\n"
-        f"Tone: enthusiastic but practical.\n"
-        f"Respond in {lang_name(req.language)}. Keep place names in English."
+    summary_prompt = _summary_prompt(
+        [
+            "Spontaneous drive trip.",
+            f"Origin: {req.origin.label or 'user location'}",
+            f"Destination: {dest.name} ({dest.highlight})",
+            f"Drive: {scored.drive_time}",
+            f"Trip type: {req.trip_type}",
+            f"Weather: {weather}",
+        ],
+        req.language,
     )
-    summary = await generate_summary(summary_prompt)
+    summary = await generate_summary(summary_prompt, system=_SUMMARY_SYSTEM)
     if not summary:
         summary = tr(
             "summary_fallback",
@@ -507,16 +532,17 @@ async def plan_for_fly_destination(
         _social_for(dest.name, dest.lat, dest.lng, req.language),
     )
 
-    summary_prompt = (
-        f"Write 2-3 sentences for a spontaneous fly-away trip plan.\n"
-        f"Fly from {origin_ap.iata} to {dest.name} ({dest.highlight})\n"
-        f"Flight: about {est['flight_time']}\n"
-        f"Trip type: {req.trip_type}\n"
-        f"Weather: {weather}\n"
-        f"Tone: enthusiastic but practical.\n"
-        f"Respond in {lang_name(req.language)}. Keep place names in English."
+    summary_prompt = _summary_prompt(
+        [
+            "Spontaneous fly-away trip.",
+            f"Fly from {origin_ap.iata} to {dest.name} ({dest.highlight})",
+            f"Flight: about {est['flight_time']}",
+            f"Trip type: {req.trip_type}",
+            f"Weather: {weather}",
+        ],
+        req.language,
     )
-    summary = await generate_summary(summary_prompt)
+    summary = await generate_summary(summary_prompt, system=_SUMMARY_SYSTEM)
     if not summary:
         summary = tr(
             "fly_summary_fallback",
@@ -559,18 +585,20 @@ async def plan_for_poi(
         fetch_weather_note(hit.lat, hit.lng, req.language),
         _local_highlights(hit.lat, hit.lng, req.start_date),
     )
-    summary_prompt = (
-        f"Write 2-3 sentences for a spontaneous trip focused on this place.\n"
-        f"Origin: {req.origin.label or 'user location'}\n"
-        f"Place: {hit.name}\n"
-        f"Why: {hit.highlight}\n"
-        f"Drive: {hit.drive_time}\n"
-        f"User asked: {req.query}\n"
-        f"Weather: {weather}\n"
-        f"Tone: practical and specific to the activity the user asked for.\n"
-        f"Respond in {lang_name(req.language)}. Keep place names in English."
+    summary_prompt = _summary_prompt(
+        [
+            "Spontaneous trip focused on one place.",
+            f"Origin: {req.origin.label or 'user location'}",
+            f"Place: {hit.name}",
+            f"Why: {hit.highlight}",
+            f"Drive: {hit.drive_time}",
+            f"User asked: {req.query}",
+            f"Weather: {weather}",
+        ],
+        req.language,
+        tone="practical and specific to the activity the user asked for",
     )
-    summary = await generate_summary(summary_prompt)
+    summary = await generate_summary(summary_prompt, system=_SUMMARY_SYSTEM)
     if not summary:
         summary = (
             f"Head to {hit.name} ({hit.drive_time} away) for “{req.query}”. "

@@ -39,12 +39,19 @@ async def fetch_weather_note(lat: float, lng: float, lang: str = "en") -> str:
             return tr("weather_unavailable", lang)
 
 
-async def generate_summary(prompt: str, json_mode: bool = False) -> str:
+async def generate_summary(
+    prompt: str, json_mode: bool = False, system: str | None = None
+) -> str:
     """Generate text from the configured LLM.
 
     When json_mode is True and the provider supports it, the model is constrained
     to emit a valid JSON object (grammar-constrained decoding) — important for
-    small local models that otherwise produce malformed JSON."""
+    small local models that otherwise produce malformed JSON.
+
+    `system` carries the fixed role/instructions. Keeping them in the system
+    message (instead of prepending to every user prompt) improves instruction
+    adherence and lets providers cache the shared prefix across calls, so only
+    the per-request facts count as fresh input tokens."""
     from app.observability import atraced, llm_latency_ms, record_external_failure
 
     async with atraced(
@@ -62,10 +69,14 @@ async def generate_summary(prompt: str, json_mode: bool = False) -> str:
 
             try:
                 client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+                extra: dict = {}
+                if system:
+                    extra["system"] = system
                 msg = await client.messages.create(
                     model=settings.anthropic_model,
                     max_tokens=800 if json_mode else 400,
                     messages=[{"role": "user", "content": prompt}],
+                    **extra,
                 )
                 block = msg.content[0]
                 return block.text if hasattr(block, "text") else str(block)
@@ -81,13 +92,17 @@ async def generate_summary(prompt: str, json_mode: bool = False) -> str:
                 if settings.openai_base_url:
                     client_kwargs["base_url"] = settings.openai_base_url
                 client = AsyncOpenAI(**client_kwargs)
-                extra: dict = {}
+                extra = {}
                 if json_mode:
                     extra["response_format"] = {"type": "json_object"}
+                messages: list[dict] = []
+                if system:
+                    messages.append({"role": "system", "content": system})
+                messages.append({"role": "user", "content": prompt})
                 resp = await client.chat.completions.create(
                     model=settings.openai_model,
                     max_tokens=800 if json_mode else 400,
-                    messages=[{"role": "user", "content": prompt}],
+                    messages=messages,
                     **extra,
                 )
                 return resp.choices[0].message.content or ""

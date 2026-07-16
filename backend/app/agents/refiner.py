@@ -17,6 +17,14 @@ from app.services.i18n import lang_name, tr
 from app.services.llm import fetch_weather_note, generate_summary
 from app.services.retrieval import retriever
 
+# Fixed role/behaviour lives in the system message; the user prompt carries only
+# the current plan, retrieved facts, and conversation turns.
+_CHAT_SYSTEM = (
+    "You are a spontaneous North America travel assistant. Be concise and "
+    "actionable. Ground answers in the provided destination facts; do not invent "
+    "places. Keep place names in English."
+)
+
 Intent = str
 
 # Short aliases (EN + ZH) users are likely to type for each catalog destination.
@@ -301,13 +309,11 @@ async def refine(req: ChatRequest) -> ChatResponse:
     ctx = f"Current plan: {it.destination}, {it.drive_time} drive. {it.summary}"
     history = "\n".join(f"{m.role}: {m.content}" for m in req.messages[-6:])
     prompt = (
-        "You are a spontaneous North America travel assistant. Be concise and actionable. "
-        "Ground your answer in the retrieved destination facts; do not invent places.\n"
-        f"{ctx}\n\nRetrieved destination facts:\n{knowledge}\n\n"
-        f"Conversation:\n{history}\n\nReply to the latest user message.\n"
-        f"Respond in {lang_name(lang)}. Keep place names in English."
+        f"{ctx}\n\nDestination facts:\n{knowledge}\n\n"
+        f"Conversation:\n{history}\n\nReply to the latest user message. "
+        f"Respond in {lang_name(lang)}."
     )
-    reply = await generate_summary(prompt)
+    reply = await generate_summary(prompt, system=_CHAT_SYSTEM)
     if not reply:
         reply = tr("capabilities", lang)
     return ChatResponse(reply=reply, itinerary=it)

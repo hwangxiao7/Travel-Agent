@@ -81,14 +81,13 @@ async def _english_query(interests: str) -> str:
     then embed it. Open vocabulary: no fixed tag list. Best-effort → "" on fail."""
     if not interests.strip():
         return ""
-    prompt = (
-        "Translate/normalize the user's interests into a short English phrase "
-        "describing the activity or experience they want (open vocabulary; keep "
-        "it concrete).\n"
-        f'User interests (any language): "{interests}"\n'
-        "Return only the phrase, nothing else."
+    system = (
+        "Translate/normalize the user's interests into a short, concrete English "
+        "phrase describing the activity or experience they want (open "
+        "vocabulary). Return only the phrase, nothing else."
     )
-    return (await generate_summary(prompt) or "").strip().strip('"')[:120]
+    prompt = f'Interests (any language): "{interests}"'
+    return (await generate_summary(prompt, system=system) or "").strip().strip('"')[:120]
 
 
 def _overlap(spot_tags: list[str], persona: dict[str, float]) -> list[str]:

@@ -4,6 +4,24 @@ from app.models.schemas import Activity, DayPlan, Event, Place
 from app.services.i18n import lang_name
 from app.services.llm import generate_summary, parse_itinerary_json
 
+# Fixed instructions live in the system message so the per-request user prompt
+# stays lean (just the facts) and the shared prefix can be cached across calls.
+_GROUNDED_SYSTEM = (
+    "You are a meticulous travel planner. Build day-by-day itineraries grounded "
+    "ONLY in the facts the user gives.\n"
+    "Rules:\n"
+    "- Use real place names from those facts; never invent landmarks.\n"
+    "- With traveler history, favor liked themes and avoid past dislikes.\n"
+    "- Match the trip vibe: low energy -> fewer relaxed stops; romantic -> cozy "
+    "scenic pairs; friends -> lively shared activities.\n"
+    "- At least one food stop per day when available.\n"
+    "- 3-5 timed activities per day, realistic order and durations.\n"
+    "- Adapt to the weather. Keep place names in English.\n"
+    'Output ONLY a JSON object (1-based "day" field per activity):\n'
+    '{"activities":[{"day":1,"time":"09:00","place":"Tunnel View",'
+    '"duration":"1h","note":"..."}]}'
+)
+
 
 def _places_line(places: list[Place]) -> str:
     if not places:
@@ -124,35 +142,20 @@ async def generate_grounded_days(
     full_context = _merge_grounding_context(context, rag_context)
 
     prompt = (
-        "You are a meticulous travel planner. Using ONLY the grounded facts below, "
-        f"write a {day_count}-day itinerary (days numbered 1..{day_count}) for "
-        f"{destination} ({region}).\n\n"
+        f"Write a {day_count}-day itinerary (days 1..{day_count}) for "
+        f'{destination} ({region}). Write each "note" in {lang_name(language)}.\n\n'
         f"Overview: {highlight}\n"
-        f"Retrieved RAG context (prefer these facts):\n{full_context or '(none)'}\n"
-        f"Nearby places to eat: {_places_line(nearby_food)}\n"
-        f"Nearby things to do: {_places_line(nearby_fun)}\n"
-        f"Local events: {_events_line(events)}\n"
+        f"Facts (prefer these; do not invent):\n{full_context or '(none)'}\n"
+        f"Eat nearby: {_places_line(nearby_food)}\n"
+        f"Do nearby: {_places_line(nearby_fun)}\n"
+        f"Events: {_events_line(events)}\n"
         f"Weather: {weather_note}\n"
-        f"Traveler preferences: {', '.join(preferences) or 'general outdoor'}\n"
-        f"{('Trip vibe: ' + framing_note + chr(10)) if framing_note else ''}"
-        f"{('Traveler history: ' + profile_note + chr(10)) if profile_note else ''}\n"
-        "Rules:\n"
-        "- Prefer real place names from the retrieved facts above; do not invent landmarks.\n"
-        "- When traveler history / memory is present, bias activities toward liked themes "
-        "and avoid past dislikes when possible.\n"
-        "- Match the trip vibe (mood / energy / company) when set: low energy → fewer, "
-        "relaxed stops; romantic → cozy scenic pairs; friends → lively shared activities.\n"
-        "- Include at least one nearby food stop per day when available.\n"
-        "- 3 to 5 timed activities per day, realistic ordering and durations.\n"
-        "- Adapt to the weather note when relevant.\n"
-        f"- Keep place names in English; write the 'note' field in {lang_name(language)}.\n\n"
-        "Respond with ONLY a JSON object using this flat schema (one array; use the "
-        "1-based 'day' field to say which day each activity belongs to):\n"
-        '{"activities":[{"day":1,"time":"09:00","place":"Tunnel View",'
-        '"duration":"1h","note":"..."}]}'
+        f"Preferences: {', '.join(preferences) or 'general outdoor'}\n"
+        f"{('Vibe: ' + framing_note + chr(10)) if framing_note else ''}"
+        f"{('History: ' + profile_note + chr(10)) if profile_note else ''}"
     )
 
-    raw = await generate_summary(prompt, json_mode=True)
+    raw = await generate_summary(prompt, json_mode=True, system=_GROUNDED_SYSTEM)
     if not raw:
         return None
 

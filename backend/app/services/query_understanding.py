@@ -452,16 +452,14 @@ async def llm_activity_phrase(query: str) -> str:
     q = (query or "").strip()
     if not q:
         return ""
-    prompt = (
-        "Rewrite this travel activity request as a short English noun phrase "
-        "(2-5 words) naming the activity only. Examples: surfing, escape room, "
-        "axe throwing, whale watching, hot springs.\n"
-        "Rules: no politeness, no 'near me/nearby/please', no place names unless "
-        "the user named one, no full sentences.\n"
-        f"Request: {q}\n"
-        "Reply with ONLY the English phrase."
+    system = (
+        "Rewrite a travel activity request as a short English noun phrase (2-5 "
+        "words) naming the activity only. Examples: surfing, escape room, axe "
+        "throwing, whale watching, hot springs. No politeness, no 'near "
+        "me/nearby/please', no place names unless the user named one, no full "
+        "sentences. Reply with ONLY the English phrase."
     )
-    raw = (await generate_summary(prompt) or "").strip().strip('"').strip("'")
+    raw = (await generate_summary(f"Request: {q}", system=system) or "").strip().strip('"').strip("'")
     if not raw or len(raw) > 60 or "\n" in raw:
         return ""
     low = raw.lower()
