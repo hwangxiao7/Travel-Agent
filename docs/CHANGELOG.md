@@ -3,6 +3,29 @@
 记录每次实质性更新:用了什么技术、做了哪些改进、影响范围。最新的放最上面。
 （规范见 `.cursor/rules/document-and-commit-updates.mdc`）
 
+## 2026-07-16 — 端到端 trace_id 与客户端日志(接上「可观测性加固」)
+
+- 技术/方案:
+  - **客户端发起 trace**:iOS `APIClient` 每个请求生成 32-hex `x-trace-id` 头并回读服务端 `X-Trace-Id`(通用 `request()` + `geocode` / `personaQuiz` / `fetchAssetData` 四条路径统一)。
+  - **错误可回溯**:`APIError` 新增 `traceId` + `displayMessage`——意外错误(5xx / 传输 / 解码)给用户附短码(尾 8 位),干净的业务 4xx 不加噪;VM 报错处改用 `displayMessage`。
+  - **iOS `AppLog`**:本地滚动 JSON 日志(Application Support,512KB × 1 备份)+ 系统统一日志(`os.Logger`),专门捕获「根本没到后端」的传输失败(超时/断网/DNS)——服务端看不到的那一类。
+  - **服务端配合**:`TracingMiddleware` 复用入站 `x-trace-id`、把 id 存进 `request.state`,解决 `BaseHTTPMiddleware` 下 contextvar 到异常 handler 丢失、导致 500 回传 `trace_id` 为空的问题;并补 `LOG_LEVEL` 级别可配。
+  - 附带修复:`AssetStore.swift` 早前入库却未加进 Xcode 工程(pbxproj 缺 4 项),补进 Sources 使 iOS 恢复可编译。
+- 改进:一个 id 串起「iOS → 网关 → LLM/RAG/外部 API」整条链;用户截图短码即可定位后端日志;传输层失败也有本地痕迹。
+- 影响范围:`ios/TravelAgent/{APIClient,Models,AuthStore,ActivitiesViewModel,TripViewModel}.swift`、`ios/TravelAgent.xcodeproj/project.pbxproj`、`backend/app/observability.py`。与上一条「可观测性加固」同源,共同构成完整的 500 兜底 + 端到端追踪闭环。
+
+## 2026-07-16 — Beta 反馈:落库 + 邮件告警 + 管理端读取
+
+- 技术/方案:反馈由 JSONL 文件改为写入 `BetaFeedback` 表(抗重启);提交后经 `BackgroundTasks` best-effort 发邮件告警(stdlib `smtplib`,未配置 SMTP 则 no-op,不阻塞提交);新增受 `ADMIN_TOKEN`(`X-Admin-Token` 头)保护的只读接口 `GET /api/beta/feedback`。低分(≤2)在邮件标题自动标注。
+- 改进:反馈持久化、可运营查看、异常评分即时告警。
+- 影响范围:`backend/app/routers/beta.py`;新增 `backend/app/services/notify.py`。依赖既有 config 的 `smtp_*`/`admin_token`/`feedback_alert_email`。
+
+## 2026-07-16 — POI 场地就近排序
+
+- 技术/方案:区分“地理受限”活动(冲浪/温泉/观星/露营等)与“随处可做”活动;对后者收紧有效搜索半径(~15mi)、扩大候选池后按距离重排,纠正 Nominatim 以 importance 排序导致“舍近求远”的问题。
+- 改进:随处可做的活动优先返回最近场地,减少不合理的远距离推荐。
+- 影响范围:`backend/app/services/activity_venues.py`。
+
 ## 2026-07-16 — 群体智能:漏斗埋点(P1)+ 人群偏好聚合(P2)
 
 - 技术/方案:`interaction_log` 记录 shown→selected→saved→rated 漏斗事件,并附事件时刻的 persona 快照;仅对登录且未 `crowd_opt_out` 的用户写入,best-effort(自持会话、失败静默),绝不阻塞或拖慢请求。`crowd` 夜间全量 rollup 到 `CrowdSignal`,按 persona 分桶 × item 聚合,serving 强制 k-匿名(K=3,仅返回覆盖 ≥K 个不同用户的桶)。`persona.persona_bucket_keys` 生成“具体→通用”的回退分桶(全 6 轴 → 最极端 top-3 → top-1 → 全局 `*`)。
