@@ -93,7 +93,7 @@ final class ActivitiesViewModel {
             }
         } catch let err as APIError {
             guard gen == loadGeneration else { return }
-            errorMessage = err.detail
+            errorMessage = err.displayMessage
         } catch {
             guard gen == loadGeneration else { return }
             errorMessage = error.localizedDescription

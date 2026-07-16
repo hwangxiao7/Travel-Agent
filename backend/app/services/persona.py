@@ -460,6 +460,50 @@ def get_or_build_persona(db: Session, user: User, *, recompute: bool = False) ->
     return p
 
 
+def persona_bucket_keys(scores: dict[str, float]) -> list[str]:
+    """Discretize a persona into backoff bucket keys (specific → general).
+
+    Each axis becomes a pole letter when clearly non-neutral (dead-zone 40–60);
+    keys are emitted at decreasing specificity so the crowd layer can fall back
+    when a narrow bucket lacks enough samples:
+      full 6-axis  →  top-3 most-extreme axes  →  top-1 axis  →  "*" (global)
+
+    The "*" global key is always included so there is always some aggregate.
+    """
+    poles: list[tuple[float, str]] = []  # (extremity, letter)
+    for axis in AXES:
+        s = float(scores.get(axis, 50.0))
+        meta = _AXIS_META[axis]
+        if s >= 60.0:
+            poles.append((s - 50.0, meta["hc"]))
+        elif s <= 40.0:
+            poles.append((50.0 - s, meta["lc"]))
+    # Most extreme first (for top-k backoff), but keys themselves are sorted for stability.
+    poles.sort(key=lambda t: t[0], reverse=True)
+    letters = [p[1] for p in poles]
+
+    keys: list[str] = []
+
+    def _key(subset: list[str]) -> str:
+        return "|".join(sorted(subset)) if subset else "*"
+
+    if letters:
+        keys.append(_key(letters))            # full
+        if len(letters) > 3:
+            keys.append(_key(letters[:3]))    # top-3
+        if len(letters) > 1:
+            keys.append(_key(letters[:1]))    # top-1
+    keys.append("*")                          # global
+    # Dedup, preserve order (specific → general).
+    seen: set[str] = set()
+    out: list[str] = []
+    for k in keys:
+        if k not in seen:
+            seen.add(k)
+            out.append(k)
+    return out
+
+
 def persona_bias(persona: Persona | None, *, tags, text: str) -> float:
     """Ranking nudge in ~[-0.12, 0.12]: how well a candidate matches the persona.
 

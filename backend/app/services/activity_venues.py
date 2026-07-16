@@ -44,9 +44,9 @@ _VENUE_QUERIES: dict[str, tuple[str, ...]] = {
     "sailing": ("sailing charter", "sailboat rental"),
     "hot_spring": ("hot spring", "hot springs"),
     "camping": ("campground", "camping"),
-    "hiking": ("hiking trailhead", "trailhead"),
-    "cycling": ("bike rental", "bike path"),
-    "picnic": ("park picnic", "city park"),
+    "hiking": ("hiking trailhead", "trailhead", "regional park"),
+    "cycling": ("bike path", "bike rental"),
+    "picnic": ("park", "picnic area", "public garden"),
     "sunset_view": ("viewpoint", "scenic overlook"),
     "stargazing": ("observatory", "dark sky"),
     "botanical_garden": ("botanical garden", "flower garden"),
@@ -77,6 +77,37 @@ _VENUE_QUERIES: dict[str, tuple[str, ...]] = {
     "boxing": ("boxing gym", "martial arts"),
     "meditation": ("meditation center", "sound bath"),
 }
+
+
+# Activities that are inherently tied to specific geography (coast, river, dark
+# sky, geology, rural farms/dropzones). For these, venues tens of miles away are
+# expected and fine. Everything NOT listed here is "ubiquitous" — doable near
+# almost any town — so we bias hard toward the closest option.
+_GEO_CONSTRAINED: frozenset[str] = frozenset(
+    {
+        "surfing",
+        "snorkeling",
+        "whale_watching",
+        "sailing",
+        "rafting",
+        "kayak",
+        "sup",
+        "hot_spring",
+        "skydiving",
+        "paragliding",
+        "hot_air_balloon",
+        "horse_riding",
+        "stargazing",
+        "camping",
+        "u_pick",
+        "farm_animals",
+        "zipline",
+    }
+)
+
+# Effective search radius for ubiquitous activities (miles). Kept small so the
+# viewbox is local and the nearest venue actually surfaces.
+_LOCAL_RADIUS_MILES = 15.0
 
 
 @dataclass
@@ -157,21 +188,25 @@ async def _from_nominatim(
     radius_miles: float,
     limit: int,
     exclude: set[str],
+    pool: int = 40,
 ) -> list[ActivityVenue]:
-    max_hours = max(0.8, radius_miles / 28.0)  # rough miles→drive hours
-    deg = max(0.25, min(1.8, radius_miles / 55.0))
+    """Search Nominatim and return the CLOSEST matches.
+
+    Nominatim orders by "importance", which surfaces big named regional parks
+    over the ordinary park down the street. We pull a larger candidate pool and
+    re-rank by distance so nearby venues win.
+    """
+    deg = max(0.12, min(1.8, radius_miles / 55.0))
     viewbox = f"{lng - deg},{lat + deg},{lng + deg},{lat - deg}"
-    out: list[ActivityVenue] = []
+    cand: list[ActivityVenue] = []
     seen = set(exclude)
 
     try:
         async with httpx.AsyncClient(timeout=12.0) as client:
             for phrase in phrases:
-                if len(out) >= limit:
-                    break
                 try:
                     data = await _nominatim_search(
-                        client, search_q=phrase, viewbox=viewbox, limit=limit
+                        client, search_q=phrase, viewbox=viewbox, limit=pool
                     )
                 except Exception:
                     continue
@@ -196,7 +231,7 @@ async def _from_nominatim(
                     if "," in display:
                         parts = [p.strip() for p in display.split(",")]
                         locality = parts[1] if len(parts) > 1 else ""
-                    out.append(
+                    cand.append(
                         ActivityVenue(
                             name=name,
                             lat=plat,
@@ -208,11 +243,11 @@ async def _from_nominatim(
                             blurb=(f"Near {locality}" if locality else f"Found for “{phrase}”"),
                         )
                     )
-                    if len(out) >= limit:
-                        break
     except Exception:
         pass
-    return out
+
+    cand.sort(key=lambda v: v.distance_miles)
+    return cand[:limit]
 
 
 async def resolve_venues(
@@ -227,22 +262,37 @@ async def resolve_venues(
     if activity is None:
         raise ValueError(f"Unknown activity: {activity_key}")
 
-    local = _from_trending(
-        activity, lat=lat, lng=lng, radius_miles=radius_miles, limit=k
-    )
-    need = max(0, k - len(local))
-    remote: list[ActivityVenue] = []
-    if need:
-        exclude = {v.name.lower() for v in local}
-        remote = await _from_nominatim(
-            venue_queries_for(activity),
-            lat=lat,
-            lng=lng,
-            radius_miles=radius_miles,
-            limit=need,
-            exclude=exclude,
-        )
+    # Ubiquitous activities (picnic, museum, bowling…) should stay close: search
+    # a tight radius first so the nearest venue wins. Geo-constrained ones
+    # (surfing, hot springs…) keep the full radius — far is expected there.
+    constrained = activity_key in _GEO_CONSTRAINED
+    eff_radius = radius_miles if constrained else min(radius_miles, _LOCAL_RADIUS_MILES)
 
-    merged = local + remote
-    merged.sort(key=lambda v: v.distance_miles)
-    return activity, merged[:k]
+    async def _gather(search_radius: float) -> list[ActivityVenue]:
+        local = _from_trending(
+            activity, lat=lat, lng=lng, radius_miles=search_radius, limit=k
+        )
+        need = max(0, k - len(local))
+        remote: list[ActivityVenue] = []
+        if need:
+            exclude = {v.name.lower() for v in local}
+            remote = await _from_nominatim(
+                venue_queries_for(activity),
+                lat=lat,
+                lng=lng,
+                radius_miles=search_radius,
+                limit=need,
+                exclude=exclude,
+            )
+        merged = local + remote
+        merged.sort(key=lambda v: v.distance_miles)
+        return merged[:k]
+
+    result = await _gather(eff_radius)
+
+    # Sparse area (e.g. rural): if the tight local search found nothing, widen
+    # once to the full requested radius rather than returning an empty list.
+    if not result and eff_radius < radius_miles:
+        result = await _gather(radius_miles)
+
+    return activity, result

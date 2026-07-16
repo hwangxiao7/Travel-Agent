@@ -70,7 +70,7 @@ final class TripViewModel {
                 try await runSearch()
             }
         } catch let err as APIError {
-            errorMessage = err.detail
+            errorMessage = err.displayMessage
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -97,7 +97,7 @@ final class TripViewModel {
             )
             itineraries[candidate.name] = try await api.select(req).itinerary
         } catch let err as APIError {
-            errorMessage = err.detail
+            errorMessage = err.displayMessage
             expandedName = nil
         } catch {
             errorMessage = error.localizedDescription
