@@ -112,7 +112,10 @@ async def search_offers(
             )
             resp.raise_for_status()
             itineraries = resp.json().get("data", {}).get("itineraries", [])
-    except Exception:
+    except Exception as exc:
+        from app.observability import record_external_failure
+
+        record_external_failure("flights", str(exc))
         return []
 
     offers: list[dict] = []
@@ -142,7 +145,10 @@ async def _fetch_calendar(
         )
         resp.raise_for_status()
         data = resp.json().get("data") or []
-    except Exception:
+    except Exception as exc:
+        from app.observability import record_external_failure
+
+        record_external_failure("flights", str(exc))
         return []
     return [d for d in data if isinstance(d, dict) and d.get("price") is not None]
 

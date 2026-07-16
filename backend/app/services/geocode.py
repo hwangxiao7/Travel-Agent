@@ -38,7 +38,10 @@ async def _mapbox(query: str, limit: int) -> list[dict]:
             lng, lat = f["center"]
             out.append({"label": f.get("place_name", ""), "lat": lat, "lng": lng})
         return out
-    except Exception:
+    except Exception as exc:
+        from app.observability import record_external_failure
+
+        record_external_failure("mapbox", str(exc))
         return []
 
 
@@ -61,5 +64,8 @@ async def _nominatim(query: str, limit: int) -> list[dict]:
             {"label": item["display_name"], "lat": float(item["lat"]), "lng": float(item["lon"])}
             for item in data
         ]
-    except Exception:
+    except Exception as exc:
+        from app.observability import record_external_failure
+
+        record_external_failure("nominatim", str(exc))
         return []

@@ -3,6 +3,12 @@
 记录每次实质性更新:用了什么技术、做了哪些改进、影响范围。最新的放最上面。
 （规范见 `.cursor/rules/document-and-commit-updates.mdc`）
 
+## 2026-07-16 — 可观测性加固与外部失败详情
+
+- 技术/方案:日志改用 `RotatingFileHandler`(`LOG_MAX_BYTES`/`LOG_BACKUP_COUNT` 控制大小与滚动);噪声路径(`/api/health`、`/api/auth/me`、`/metrics`)按 `LOG_SAMPLE_NOISY` 采样,≥400 始终全量记录;新增全局未处理异常处理器(记堆栈 + 回传 `trace_id`);指标用模板化 route 路径降低 Prometheus 基数;`record_external_failure(api, error)` 记录截断后的错误详情。
+- 改进:日志不再无限增长、噪声大幅下降;500 更易定位;外部 API 失败能看到原因。
+- 影响范围:`backend/app/observability.py`;`poi_search.py`/`geocode.py`/`events.py`/`flights.py` 在异常分支补传错误串(依赖新签名,需同批提交)。
+
 ## 2026-07-15 — LLM 采样温度、token 用量度量与改写函数去重
 
 - 技术/方案:

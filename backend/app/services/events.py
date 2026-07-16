@@ -73,7 +73,10 @@ async def fetch_events(
             resp = await client.get(DISCOVERY_URL, params=params)
             resp.raise_for_status()
             data = resp.json()
-    except Exception:
+    except Exception as exc:
+        from app.observability import record_external_failure
+
+        record_external_failure("ticketmaster", str(exc))
         return []
 
     raw_events = data.get("_embedded", {}).get("events", [])

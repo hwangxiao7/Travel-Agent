@@ -148,7 +148,10 @@ async def search_nearby_pois(
                 if data:
                     search_q = q
                     break
-    except Exception:
+    except Exception as exc:
+        from app.observability import record_external_failure
+
+        record_external_failure("nominatim", str(exc))
         data = []
 
     hits: list[PoiHit] = []
