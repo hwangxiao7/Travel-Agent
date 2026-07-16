@@ -39,8 +39,52 @@ async def fetch_weather_note(lat: float, lng: float, lang: str = "en") -> str:
             return tr("weather_unavailable", lang)
 
 
+def _record_token_usage(span, usage, provider: str) -> None:
+    """Attach LLM token counts to the trace span + JSON log.
+
+    Providers disagree on field names (OpenAI: prompt/completion_tokens;
+    Anthropic: input/output_tokens) and OpenAI-compatible gateways may omit
+    usage entirely, so every field is best-effort. Logged so the token cost of
+    each prompt is measurable (and prompt-caching wins are visible via the
+    cached count)."""
+    if usage is None:
+        return
+    if provider == "anthropic":
+        prompt_t = getattr(usage, "input_tokens", None)
+        completion_t = getattr(usage, "output_tokens", None)
+        cached_t = getattr(usage, "cache_read_input_tokens", None)
+    else:
+        prompt_t = getattr(usage, "prompt_tokens", None)
+        completion_t = getattr(usage, "completion_tokens", None)
+        details = getattr(usage, "prompt_tokens_details", None)
+        cached_t = getattr(details, "cached_tokens", None) if details is not None else None
+    total_t = (prompt_t + completion_t) if (prompt_t is not None and completion_t is not None) else None
+
+    if span is not None:
+        for key, val in (
+            ("llm.tokens.prompt", prompt_t),
+            ("llm.tokens.completion", completion_t),
+            ("llm.tokens.total", total_t),
+            ("llm.tokens.cached", cached_t),
+        ):
+            if val is not None:
+                span.set_attribute(key, val)
+
+    import logging
+
+    logging.getLogger("travel_agent").info(
+        "llm tokens "
+        f"provider={provider} prompt={prompt_t} completion={completion_t} "
+        f"total={total_t} cached={cached_t}",
+        extra={"span": "LLM generation"},
+    )
+
+
 async def generate_summary(
-    prompt: str, json_mode: bool = False, system: str | None = None
+    prompt: str,
+    json_mode: bool = False,
+    system: str | None = None,
+    temperature: float | None = None,
 ) -> str:
     """Generate text from the configured LLM.
 
@@ -51,14 +95,23 @@ async def generate_summary(
     `system` carries the fixed role/instructions. Keeping them in the system
     message (instead of prepending to every user prompt) improves instruction
     adherence and lets providers cache the shared prefix across calls, so only
-    the per-request facts count as fresh input tokens."""
+    the per-request facts count as fresh input tokens.
+
+    `temperature` controls sampling. When left None it defaults to 0.2 for
+    json_mode (structure-critical, we want determinism) and 0.7 for free prose."""
     from app.observability import atraced, llm_latency_ms, record_external_failure
+
+    temp = temperature if temperature is not None else (0.2 if json_mode else 0.7)
 
     async with atraced(
         "LLM generation",
-        attributes={"llm.json_mode": json_mode, "llm.provider": settings.llm_provider},
+        attributes={
+            "llm.json_mode": json_mode,
+            "llm.provider": settings.llm_provider,
+            "llm.temperature": temp,
+        },
         latency_metric=llm_latency_ms,
-    ):
+    ) as span:
         provider = settings.llm_provider.lower()
 
         if provider == "template":
@@ -75,9 +128,11 @@ async def generate_summary(
                 msg = await client.messages.create(
                     model=settings.anthropic_model,
                     max_tokens=800 if json_mode else 400,
+                    temperature=temp,
                     messages=[{"role": "user", "content": prompt}],
                     **extra,
                 )
+                _record_token_usage(span, getattr(msg, "usage", None), "anthropic")
                 block = msg.content[0]
                 return block.text if hasattr(block, "text") else str(block)
             except Exception:
@@ -102,9 +157,11 @@ async def generate_summary(
                 resp = await client.chat.completions.create(
                     model=settings.openai_model,
                     max_tokens=800 if json_mode else 400,
+                    temperature=temp,
                     messages=messages,
                     **extra,
                 )
+                _record_token_usage(span, getattr(resp, "usage", None), "openai")
                 return resp.choices[0].message.content or ""
             except Exception:
                 record_external_failure("llm")

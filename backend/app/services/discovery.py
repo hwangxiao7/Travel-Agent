@@ -23,7 +23,6 @@ from app.db import User
 from app.models.schemas import ExperiencePush
 from app.services.embeddings import embed_query, embed_texts
 from app.services.experiences import season_multiplier
-from app.services.llm import generate_summary
 from app.services.trending_store import get_spots_near
 
 _TOKEN_RE = re.compile(r"[a-z0-9\u4e00-\u9fff\-]+", re.I)
@@ -81,13 +80,11 @@ async def _english_query(interests: str) -> str:
     then embed it. Open vocabulary: no fixed tag list. Best-effort → "" on fail."""
     if not interests.strip():
         return ""
-    system = (
-        "Translate/normalize the user's interests into a short, concrete English "
-        "phrase describing the activity or experience they want (open "
-        "vocabulary). Return only the phrase, nothing else."
-    )
-    prompt = f'Interests (any language): "{interests}"'
-    return (await generate_summary(prompt, system=system) or "").strip().strip('"')[:120]
+    # Shared core with llm_activity_phrase (loose contract: concrete phrase, not
+    # a tight 2-5 word noun phrase). Local import avoids an import cycle.
+    from app.services.query_understanding import english_activity_phrase
+
+    return await english_activity_phrase(interests, strict=False)
 
 
 def _overlap(spot_tags: list[str], persona: dict[str, float]) -> list[str]:

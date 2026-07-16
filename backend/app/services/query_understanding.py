@@ -441,25 +441,41 @@ def extract_intent(query: str) -> TravelIntent:
     return intent
 
 
-async def llm_activity_phrase(query: str) -> str:
-    """Open-vocab: rewrite any-language activity request into a short English phrase.
+# Any-language -> English activity phrasing. Two contracts share one core:
+#   strict=True  -> tight 2-5 word noun phrase for POI / embedding retrieval
+#   strict=False -> looser concrete phrase for open-ended "surprise me" discovery
+_PHRASE_SYSTEM_STRICT = (
+    "Rewrite a travel activity request as a short English noun phrase (2-5 "
+    "words) naming the activity only. Examples: surfing, escape room, axe "
+    "throwing, whale watching, hot springs. No politeness, no 'near "
+    "me/nearby/please', no place names unless the user named one, no full "
+    "sentences. Reply with ONLY the English phrase."
+)
+_PHRASE_SYSTEM_LOOSE = (
+    "Translate/normalize the user's interests into a short, concrete English "
+    "phrase describing the activity or experience they want (open vocabulary). "
+    "Return only the phrase, nothing else."
+)
 
-    Used for embedding retrieval and POI search. No synonym tables — the LLM
-    handles novel activities and paraphrases.
+
+async def english_activity_phrase(text: str, *, strict: bool = True) -> str:
+    """Open-vocab: rewrite any-language activity text into an English phrase.
+
+    Shared by POI/embedding retrieval (strict) and discovery (loose). No synonym
+    tables — the LLM handles novel activities and paraphrases. Low temperature
+    keeps this normalization deterministic. Best-effort → "" on failure.
     """
     from app.services.llm import generate_summary
 
-    q = (query or "").strip()
+    q = (text or "").strip()
     if not q:
         return ""
-    system = (
-        "Rewrite a travel activity request as a short English noun phrase (2-5 "
-        "words) naming the activity only. Examples: surfing, escape room, axe "
-        "throwing, whale watching, hot springs. No politeness, no 'near "
-        "me/nearby/please', no place names unless the user named one, no full "
-        "sentences. Reply with ONLY the English phrase."
-    )
-    raw = (await generate_summary(f"Request: {q}", system=system) or "").strip().strip('"').strip("'")
+    system = _PHRASE_SYSTEM_STRICT if strict else _PHRASE_SYSTEM_LOOSE
+    raw = (
+        await generate_summary(f"Request: {q}", system=system, temperature=0.2) or ""
+    ).strip().strip('"').strip("'")
+    if not strict:
+        return raw[:120]
     if not raw or len(raw) > 60 or "\n" in raw:
         return ""
     low = raw.lower()
@@ -475,6 +491,11 @@ async def llm_activity_phrase(query: str) -> str:
     cleaned = cleaned.replace("_", " ").replace("*", " ")
     cleaned = " ".join(cleaned.split()).strip(" .,!")
     return cleaned or raw
+
+
+async def llm_activity_phrase(query: str) -> str:
+    """Strict activity phrase for embedding retrieval and POI search."""
+    return await english_activity_phrase(query, strict=True)
 
 
 def rewrite_query(
