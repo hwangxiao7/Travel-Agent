@@ -31,7 +31,7 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     display_name: Mapped[str] = mapped_column(String(120), default="")
-    password_hash: Mapped[str] = mapped_column(String(255))
+    password_hash: Mapped[str] = mapped_column(String(255), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     # Profile / account management.
     contact: Mapped[str] = mapped_column(String(120), default="")  # phone / handle (optional)
@@ -44,6 +44,10 @@ class User(Base):
     # Collective-intelligence opt-out: when True, this user's behavior is NOT
     # logged into the crowd/collaborative aggregates (privacy: opt-out honored).
     crowd_opt_out: Mapped[bool] = mapped_column(Integer, default=0)
+    # China-market identities (feature-flagged login). Empty = unused.
+    phone: Mapped[str] = mapped_column(String(32), unique=True, nullable=True, index=True)
+    wechat_openid: Mapped[str] = mapped_column(String(64), unique=True, nullable=True, index=True)
+    wechat_unionid: Mapped[str] = mapped_column(String(64), default="", index=True)
 
     trips: Mapped[list[Trip]] = relationship(back_populates="user", cascade="all, delete-orphan")
     reviews: Mapped[list[PlaceReview]] = relationship(
@@ -234,6 +238,25 @@ class MediaAsset(Base):
     version: Mapped[int] = mapped_column(Integer, default=1)
 
 
+class BetaFeedback(Base):
+    """User-submitted feedback (rating + free-text note) from the beta build.
+
+    Stored in the DB (not a local file) so it survives redeploys and can be
+    read back / alerted on. Anonymous-friendly: user_email is optional.
+    """
+
+    __tablename__ = "beta_feedback"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    rating: Mapped[int] = mapped_column(Integer, default=0)  # 1–5
+    note: Mapped[str] = mapped_column(Text, default="")
+    query: Mapped[str] = mapped_column(String(500), default="")
+    destination: Mapped[str] = mapped_column(String(200), default="")
+    page: Mapped[str] = mapped_column(String(64), default="web")
+    user_email: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
 class TravelPersona(Base):
     """Abstract travel-taste persona (MBTI-style axes), one per user.
 
@@ -304,6 +327,9 @@ def _ensure_sqlite_columns(engine) -> None:
             "default_prefs": "TEXT DEFAULT '[]'",
             "token_version": "INTEGER DEFAULT 0",
             "crowd_opt_out": "INTEGER DEFAULT 0",
+            "phone": "VARCHAR(32)",
+            "wechat_openid": "VARCHAR(64)",
+            "wechat_unionid": "VARCHAR(64) DEFAULT ''",
         },
     }
     with engine.begin() as conn:

@@ -266,6 +266,24 @@ textarea {
   margin-top: 0.5rem;
 }
 
+.pill.wechat {
+  width: 100%;
+  margin-top: 0.75rem;
+  background: #07c160;
+  color: #fff;
+}
+
+.auth-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.auth-actions .pill {
+  flex: 1;
+}
+
 .pill.ghost {
   background: #fff;
   box-shadow: 2px 2px 0 var(--ink);

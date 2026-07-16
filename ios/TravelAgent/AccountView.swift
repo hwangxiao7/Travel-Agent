@@ -40,48 +40,87 @@ private struct AuthForm: View {
     @State private var email = ""
     @State private var password = ""
     @State private var displayName = ""
+    @State private var phone = ""
+    @State private var otp = ""
 
-    enum Mode { case login, register }
+    enum Mode { case login, register, phone }
+
+    private var zh: Bool { Config.language == "zh" }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            if let ui = UIImage(named: "mascot") {
-                Image(uiImage: ui).resizable().scaledToFit().frame(width: 90, height: 90)
-                    .frame(maxWidth: .infinity)
-            }
+            StickerImage(name: "mascot", fallbackSymbol: "sparkles", size: 90)
+                .frame(maxWidth: .infinity)
+
             Picker("", selection: $mode) {
-                Text("Log in").tag(Mode.login)
-                Text("Sign up").tag(Mode.register)
+                Text(zh ? "登录" : "Log in").tag(Mode.login)
+                Text(zh ? "注册" : "Sign up").tag(Mode.register)
+                if auth.authMethods.phone {
+                    Text(zh ? "手机" : "Phone").tag(Mode.phone)
+                }
             }
             .pickerStyle(.segmented)
+            .task { await auth.refreshAuthMethods() }
 
-            if mode == .register {
-                field("Name", text: $displayName)
+            if mode == .phone {
+                field(zh ? "手机号" : "Phone", text: $phone, keyboard: .phonePad)
+                field(zh ? "验证码" : "Code", text: $otp, keyboard: .numberPad)
+                HStack {
+                    Button {
+                        Task { _ = await auth.phoneSend(phone: phone) }
+                    } label: {
+                        Text(zh ? "发送验证码" : "Send code")
+                    }
+                    .buttonStyle(CutePillButton())
+                    .disabled(auth.isBusy || phone.isEmpty)
+
+                    Button {
+                        Task { _ = await auth.phoneVerify(phone: phone, code: otp, displayName: displayName) }
+                    } label: {
+                        Text(zh ? "登录" : "Verify")
+                    }
+                    .buttonStyle(CutePillButton())
+                    .disabled(auth.isBusy || phone.isEmpty || otp.isEmpty)
+                }
+            } else {
+                if mode == .register {
+                    field(zh ? "昵称" : "Name", text: $displayName)
+                }
+                field(zh ? "邮箱" : "Email", text: $email, keyboard: .emailAddress)
+                secureField(zh ? "密码" : "Password", text: $password)
+
+                Button {
+                    Task {
+                        if mode == .login {
+                            _ = await auth.login(email: email, password: password)
+                        } else {
+                            _ = await auth.register(email: email, password: password, displayName: displayName)
+                        }
+                    }
+                } label: {
+                    Text(mode == .login ? (zh ? "登录" : "Log in") : (zh ? "创建账号" : "Create account"))
+                }
+                .buttonStyle(CutePillButton())
+                .disabled(auth.isBusy || email.isEmpty || password.isEmpty || (mode == .register && password.count < 6))
             }
-            field("Email", text: $email, keyboard: .emailAddress)
-            secureField("Password", text: $password)
+
+            if auth.authMethods.wechat {
+                Button {
+                    Task { _ = await auth.startWeChat() }
+                } label: {
+                    Text(zh ? "微信登录" : "Continue with WeChat")
+                }
+                .buttonStyle(CutePillButton())
+                .disabled(auth.isBusy)
+            }
 
             if let err = auth.errorMessage {
                 Text(err).font(Cute.rounded(13, .medium)).foregroundStyle(Color(hex: 0xD6336C))
             }
 
-            Button {
-                Task {
-                    if mode == .login {
-                        _ = await auth.login(email: email, password: password)
-                    } else {
-                        _ = await auth.register(email: email, password: password, displayName: displayName)
-                    }
-                }
-            } label: {
-                Text(mode == .login ? "Log in" : "Create account")
-            }
-            .buttonStyle(CutePillButton())
-            .disabled(auth.isBusy || email.isEmpty || password.isEmpty || (mode == .register && password.count < 6))
-
             Text(L10n.t(
-                "Use your email + password. No email verification for now — keep your password private.",
-                "用邮箱和密码登录。暂不验证邮箱，请妥善保管密码。"
+                "Email works everywhere. Phone / WeChat appear only when enabled on the server for China deploy.",
+                "邮箱登录默认可用。手机号 / 微信仅在服务端为中国市场打开开关后显示。"
             ))
                 .font(Cute.rounded(12, .medium)).foregroundStyle(Cute.ink.opacity(0.6))
         }
@@ -130,7 +169,7 @@ private struct SignedInView: View {
         if let p = auth.persona {
             PersonaCard(auth: auth, persona: p) { showQuiz = true }
         } else {
-            Button { showQuiz = true } label: { Text("Discover your travel persona ✨") }
+            Button { showQuiz = true } label: { Text("Discover your travel persona") }
                 .buttonStyle(CutePillButton())
         }
 
@@ -148,8 +187,10 @@ private struct SignedInView: View {
 
         // Settings hub
         sectionHeader("Settings")
-        NavigationLink { ChangePasswordView(auth: auth) } label: {
-            rowLabel("Change password", "lock.fill")
+        if auth.user?.hasPassword != false {
+            NavigationLink { ChangePasswordView(auth: auth) } label: {
+                rowLabel("Change password", "lock.fill")
+            }
         }
         NavigationLink { DefaultPrefsView(auth: auth) } label: {
             rowLabel(L10n.t("Default preferences", "默认偏好"), "heart.fill")
@@ -295,9 +336,7 @@ struct AboutView: View {
         ZStack {
             CutePaper()
             VStack(spacing: 12) {
-                if let ui = UIImage(named: "mascot") {
-                    Image(uiImage: ui).resizable().scaledToFit().frame(width: 100, height: 100)
-                }
+                StickerImage(name: "mascot", fallbackSymbol: "map.fill", size: 100)
                 Text("Spontaneous Travel").font(Cute.rounded(20, .heavy)).foregroundStyle(Cute.ink)
                 Text("Day trips & weekends, planned on a whim.\nAI picks match your travel persona.")
                     .multilineTextAlignment(.center)
@@ -494,9 +533,7 @@ struct PersonaCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                if let ui = UIImage(named: "mascot") {
-                    Image(uiImage: ui).resizable().scaledToFit().frame(width: 44, height: 44)
-                }
+                StickerImage(name: "mascot", fallbackSymbol: "sparkles", size: 44)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(persona.title).font(Cute.rounded(19, .heavy)).foregroundStyle(Cute.ink)
                     if !persona.typeCode.isEmpty {
@@ -742,6 +779,10 @@ struct PersonaQuizView: View {
     @State private var answers: [String: String] = [:]
     @State private var loading = true
 
+    private var quizComplete: Bool {
+        !questions.isEmpty && answers.count >= questions.count
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -749,8 +790,8 @@ struct PersonaQuizView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         Text(L10n.t(
-                            "A few quick questions to build your travel persona 🌸",
-                            "几个小问题，帮我们了解你的旅行人格 🌸"
+                            "A few quick questions to build your travel persona.",
+                            "几个小问题，帮我们了解你的旅行人格。"
                         ))
                             .font(Cute.rounded(15, .medium)).foregroundStyle(Cute.ink.opacity(0.8))
                         ForEach(questions) { q in
@@ -775,15 +816,33 @@ struct PersonaQuizView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .stickerCard()
                         }
+                        if answers.count < questions.count, !questions.isEmpty {
+                            Text(L10n.t(
+                                "Answer all questions (\(answers.count)/\(questions.count))",
+                                "请答完所有题（\(answers.count)/\(questions.count)）"
+                            ))
+                            .font(Cute.rounded(13, .medium))
+                            .foregroundStyle(Cute.ink.opacity(0.55))
+                            .frame(maxWidth: .infinity)
+                        }
+                        if let err = auth.errorMessage, !err.isEmpty {
+                            Text(err)
+                                .font(Cute.rounded(13, .medium))
+                                .foregroundStyle(.red.opacity(0.85))
+                                .frame(maxWidth: .infinity)
+                        }
                         Button {
                             Task {
                                 if await auth.submitQuiz(answers) { dismiss() }
                             }
                         } label: {
-                            Text(L10n.t("See my persona ✨", "查看我的人格 ✨"))
+                            Label(
+                                L10n.t("See my persona", "查看我的人格"),
+                                systemImage: "sparkles"
+                            )
                         }
                         .buttonStyle(CutePillButton())
-                        .disabled(answers.count < questions.count || auth.isBusy)
+                        .disabled(!quizComplete || auth.isBusy)
                     }
                     .padding(16)
                 }
@@ -794,6 +853,7 @@ struct PersonaQuizView: View {
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(L10n.t("Close", "关闭")) { dismiss() } } }
             .task {
                 loading = true
+                auth.errorMessage = nil
                 questions = (try? await APIClient.shared.personaQuiz(language: Config.language).questions) ?? []
                 loading = false
             }

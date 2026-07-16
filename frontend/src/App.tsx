@@ -52,10 +52,17 @@ export default function App() {
   const [detailLoading, setDetailLoading] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!getToken()) return
-    void fetchMe()
-      .then(setUser)
-      .catch(() => setUser(null))
+    void (async () => {
+      const { redeemWechatTicketFromUrl } = await import('./components/AccountModal')
+      const ok = await redeemWechatTicketFromUrl(setUser)
+      if (ok) return
+      if (!getToken()) return
+      try {
+        setUser(await fetchMe())
+      } catch {
+        setUser(null)
+      }
+    })()
   }, [])
 
   useEffect(() => {

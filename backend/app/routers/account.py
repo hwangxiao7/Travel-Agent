@@ -47,20 +47,52 @@ from app.services.persona import (
 router = APIRouter(prefix="/api", tags=["account"])
 
 
+def _public_email(raw: str | None) -> str:
+    e = (raw or "").strip()
+    if e.startswith("__phone__") or e.startswith("__wx__"):
+        return ""
+    return e
+
+
+def _mask_phone(phone: str | None) -> str:
+    p = (phone or "").strip()
+    if len(p) < 7:
+        return ""
+    # +8613800138000 → 138****8000
+    digits = p[3:] if p.startswith("+86") else p
+    if len(digits) == 11:
+        return f"{digits[:3]}****{digits[-4:]}"
+    return p[-4:].rjust(4, "*")
+
+
 def _user_out(u: User) -> UserOut:
     try:
         prefs = json.loads(getattr(u, "default_prefs", "[]") or "[]")
     except json.JSONDecodeError:
         prefs = []
+    providers: list[str] = []
+    email = _public_email(u.email)
+    if email:
+        providers.append("email")
+    phone = getattr(u, "phone", None) or ""
+    if phone:
+        providers.append("phone")
+    if getattr(u, "wechat_openid", None):
+        providers.append("wechat")
+    pwd = getattr(u, "password_hash", "") or ""
     return UserOut(
         id=u.id,
-        email=u.email,
+        email=email,
         display_name=u.display_name or "",
         contact=getattr(u, "contact", "") or "",
         home_label=getattr(u, "home_label", "") or "",
         home_lat=getattr(u, "home_lat", 0.0) or 0.0,
         home_lng=getattr(u, "home_lng", 0.0) or 0.0,
         default_prefs=[p for p in prefs if isinstance(p, str)],
+        crowd_opt_out=bool(getattr(u, "crowd_opt_out", 0)),
+        phone=_mask_phone(phone),
+        has_password=bool(pwd),
+        auth_providers=providers,
     )
 
 
@@ -90,7 +122,7 @@ def _review_out(r: PlaceReview) -> ReviewOut:
         destination=r.destination,
         rating=r.rating,
         comment=r.comment,
-        author=r.user.display_name or r.user.email.split("@")[0],
+        author=(r.user.display_name or _public_email(r.user.email).split("@")[0] or "user"),
         created_at=r.created_at.isoformat() if r.created_at else "",
         updated_at=r.updated_at.isoformat() if r.updated_at else "",
     )
@@ -129,7 +161,12 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
         # Same work + same error as wrong password (no email enumeration).
         verify_password(body.password, _DUMMY_PASSWORD_HASH)
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    if not verify_password(body.password, user.password_hash):
+    pwd = user.password_hash or ""
+    if not pwd or not verify_password(body.password, pwd):
+        if pwd:
+            pass  # already verified false
+        else:
+            verify_password(body.password, _DUMMY_PASSWORD_HASH)
         raise HTTPException(status_code=401, detail="Invalid email or password")
     token = create_access_token(user.id, user.email, user.token_version or 0)
     return AuthResponse(access_token=token, user=_user_out(user))
@@ -171,6 +208,8 @@ def update_profile(
         user.home_lng = body.home_lng
     if body.default_prefs is not None:
         user.default_prefs = json.dumps([p.value for p in body.default_prefs])
+    if body.crowd_opt_out is not None:
+        user.crowd_opt_out = 1 if body.crowd_opt_out else 0
     db.commit()
     db.refresh(user)
     return _user_out(user)
@@ -182,7 +221,8 @@ def change_password(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if not verify_password(body.current_password, user.password_hash):
+    pwd = user.password_hash or ""
+    if not pwd or not verify_password(body.current_password, pwd):
         raise HTTPException(status_code=401, detail="Current password is incorrect")
     user.password_hash = hash_password(body.new_password)
     user.token_version = (user.token_version or 0) + 1  # invalidate old sessions
@@ -192,23 +232,29 @@ def change_password(
     return AuthResponse(access_token=token, user=_user_out(user))
 
 
-@router.post("/auth/logout-all")
-def logout_all(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Invalidate every existing token for this user (server-side logout)."""
-    user.token_version = (user.token_version or 0) + 1
-    db.commit()
-    return {"ok": True}
-
-
 @router.delete("/me")
 def delete_account(
     body: DeleteAccountRequest,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if not verify_password(body.password, user.password_hash):
+    pwd = user.password_hash or ""
+    if not pwd:
+        raise HTTPException(
+            status_code=400,
+            detail="This account has no password — contact support or re-auth via phone to delete",
+        )
+    if not verify_password(body.password, pwd):
         raise HTTPException(status_code=401, detail="Password is incorrect")
     db.delete(user)  # cascade removes trips + reviews
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/auth/logout-all")
+def logout_all(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Invalidate every existing token for this user (server-side logout)."""
+    user.token_version = (user.token_version or 0) + 1
     db.commit()
     return {"ok": True}
 
@@ -294,6 +340,10 @@ def save_trip(
     db.add(trip)
     db.commit()
     db.refresh(trip)
+    from app.services.interaction_log import log_event
+
+    log_event(user, stage="saved", surface="trip",
+              item_name=trip.destination, item_kind="destination")
     return _trip_out(trip)
 
 
@@ -315,6 +365,17 @@ def record_feedback(
     )
     db.add(event)
     db.commit()
+
+    _STAGE = {"save": "saved", "visit": "saved", "share": "saved",
+              "rate": "rated", "skip": "skipped", "click": "selected"}
+    stage = _STAGE.get(body.event_type)
+    if stage:
+        from app.services.interaction_log import log_event
+
+        log_event(user, stage=stage, surface="feedback",
+                  item_key=event.place_key, item_name=name or body.destination.strip(),
+                  item_kind="place" if name else "destination",
+                  outcome_value=float(body.value or 0.0))
     return FeedbackOut(ok=True, event_type=body.event_type, destination=body.destination.strip())
 
 
@@ -336,6 +397,13 @@ def upsert_review(
     if not name:
         raise HTTPException(status_code=422, detail="place_name required")
     key = place_key(name)
+
+    def _log_rating():
+        from app.services.interaction_log import log_event
+
+        log_event(user, stage="rated", surface="review", item_key=key,
+                  item_name=name, item_kind="place", outcome_value=float(body.rating))
+
     existing = db.scalar(
         select(PlaceReview).where(PlaceReview.user_id == user.id, PlaceReview.place_key == key)
     )
@@ -348,6 +416,7 @@ def upsert_review(
         existing.updated_at = now
         db.commit()
         db.refresh(existing)
+        _log_rating()
         return _review_out(existing)
 
     review = PlaceReview(
@@ -363,6 +432,7 @@ def upsert_review(
     db.add(review)
     db.commit()
     db.refresh(review)
+    _log_rating()
     return _review_out(review)
 
 

@@ -55,6 +55,32 @@ class Settings(BaseSettings):
     jwt_secret: str = "dev-change-me-spontaneous-travel"
     jwt_expire_hours: int = 168  # 7 days
     database_url: str = ""  # blank → sqlite file under backend/data/
+    # Observability / logging knobs.
+    log_level: str = "INFO"  # DEBUG | INFO | WARNING | ERROR
+    log_max_bytes: int = 20_000_000  # rotate travel_agent.log at ~20 MB
+    log_backup_count: int = 5  # keep N rotated files (.1 … .N)
+    # Down-sample floods of successful, low-value requests (health, /auth/me):
+    # keep 1 in N. Errors (>=400) are always logged. 1 = log everything.
+    log_sample_noisy: int = 20
+    # --- Feedback alerts (email on new user feedback) ---
+    # SMTP is optional: when unset, feedback is still stored, just not emailed.
+    # Gmail: host=smtp.gmail.com port=587 user=<you>@gmail.com pass=<app password>.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""  # blank → falls back to smtp_user
+    feedback_alert_email: str = "hwangxiao7@gmail.com"  # where alerts go
+    # Bearer-style token guarding the read-only feedback admin endpoint.
+    admin_token: str = ""
+
+    # China-market auth (default OFF — turn on when deploying domestically).
+    auth_phone_enabled: bool = False
+    auth_wechat_enabled: bool = False
+    auth_phone_dev_code: str = ""  # optional fixed 6-digit OTP for local QA
+    wechat_app_id: str = ""
+    wechat_app_secret: str = ""
+    wechat_redirect_uri: str = ""  # e.g. https://your.domain/api/auth/wechat/callback
 
 
 settings = Settings()

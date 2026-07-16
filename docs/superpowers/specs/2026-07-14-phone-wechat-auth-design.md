@@ -1,7 +1,7 @@
 # Feature-flagged Phone + WeChat Auth (China market ready)
 
 **Date:** 2026-07-14  
-**Status:** Approved in chat; awaiting spec file review before implementation  
+**Status:** Implemented (default feature flags OFF)  
 **Scope:** Backend + Web + iOS (option C)  
 **WeChat UX:** Website OAuth / QR flow shared by Web + iOS (option B — no native WeChat SDK)  
 **SMS:** Full API + in-process mock codes (option A — no Aliyun/Tencent provider yet)

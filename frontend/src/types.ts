@@ -95,6 +95,15 @@ export interface AuthUser {
   home_lat?: number
   home_lng?: number
   default_prefs?: Preference[]
+  phone?: string
+  has_password?: boolean
+  auth_providers?: string[]
+}
+
+export interface AuthMethods {
+  email: boolean
+  phone: boolean
+  wechat: boolean
 }
 
 export interface PersonaAxis {

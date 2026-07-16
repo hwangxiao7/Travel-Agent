@@ -446,6 +446,29 @@ class UserOut(BaseModel):
     home_lng: float = 0.0
     default_prefs: list[Preference] = Field(default_factory=list)
     crowd_opt_out: bool = False
+    phone: str = ""  # masked when present, e.g. 138****8000
+    has_password: bool = True
+    auth_providers: list[str] = Field(default_factory=list)  # email | phone | wechat
+
+
+class PhoneSendRequest(BaseModel):
+    phone: str
+
+
+class PhoneVerifyRequest(BaseModel):
+    phone: str
+    code: str = Field(min_length=4, max_length=8)
+    display_name: str = ""
+
+
+class WeChatExchangeRequest(BaseModel):
+    ticket: str
+
+
+class AuthMethodsOut(BaseModel):
+    email: bool = True
+    phone: bool = False
+    wechat: bool = False
 
 
 class AuthResponse(BaseModel):

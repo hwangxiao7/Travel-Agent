@@ -75,6 +75,64 @@ export async function login(email: string, password: string) {
   return res
 }
 
+export async function fetchAuthMethods() {
+  try {
+    return await req<import('../types').AuthMethods>(
+      'GET',
+      'authMethods',
+      undefined,
+      undefined,
+      'methods',
+    )
+  } catch {
+    return { email: true, phone: false, wechat: false }
+  }
+}
+
+export async function phoneSend(phone: string) {
+  return req<{ ok: boolean; expires_in: number }>(
+    'POST',
+    'authPhoneSend',
+    { phone },
+    undefined,
+    'Send code failed',
+  )
+}
+
+export async function phoneVerify(phone: string, code: string, displayName = '') {
+  const res = await req<AuthResponse>(
+    'POST',
+    'authPhoneVerify',
+    { phone, code, display_name: displayName },
+    undefined,
+    'Verify failed',
+  )
+  setToken(res.access_token)
+  return res
+}
+
+export async function wechatStart(returnTo: string) {
+  return req<{ authorize_url: string }>(
+    'GET',
+    'authWechatStart',
+    undefined,
+    { return_to: returnTo },
+    'WeChat start failed',
+  )
+}
+
+export async function wechatExchange(ticket: string) {
+  const res = await req<AuthResponse>(
+    'POST',
+    'authWechatExchange',
+    { ticket },
+    undefined,
+    'WeChat exchange failed',
+  )
+  setToken(res.access_token)
+  return res
+}
+
 export async function fetchMe() {
   return req<AuthUser>('GET', 'authMe', undefined, undefined, 'Not signed in')
 }

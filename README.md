@@ -18,6 +18,7 @@
 2. **Trip planner / 出行规划** → 约束 + 搜索 → `POST /api/plan` 或 `/api/search` → 候选手风琴 → `/api/select`
 3. 头像进 **Account**（登录、人格测验、行程/评价、语言）
 4. 贴纸风 UI（粉/薄荷、硬阴影描边），无地图/聊天侧栏
+5. **手机号 / 微信登录**：后端模块已就绪，默认关闭。国内部署时在 `.env` 打开 `AUTH_PHONE_ENABLED` / `AUTH_WECHAT_ENABLED`（见 `.env.example`）
 
 ## Quick start
 

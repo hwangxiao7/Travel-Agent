@@ -27,6 +27,10 @@ targets:
           NSAllowsLocalNetworking: true
           NSAllowsArbitraryLoads: true
         NSLocationWhenInUseUsageDescription: "Used to find activities near you."
+        CFBundleURLTypes:
+          - CFBundleURLName: local.travelagent.app
+            CFBundleURLSchemes:
+              - travelagent
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: local.travelagent.app

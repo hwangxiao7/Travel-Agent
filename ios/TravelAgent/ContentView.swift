@@ -50,7 +50,7 @@ struct ContentView: View {
             if vm.isLoading {
                 CuteLoadingOverlay(
                     title: zh ? "正在规划…" : "Planning your trip…",
-                    subtitle: zh ? "稍等一下，贴纸还在路上" : "Hang tight — packing the stickers",
+                    subtitle: zh ? "正在挑选适合你的目的地" : "Finding spots that fit you",
                     symbol: "map.fill"
                 )
                 .transition(.opacity)
@@ -70,6 +70,16 @@ struct ContentView: View {
             Task { await activities.load(interests: "") }
         }
         .sheet(isPresented: $showAccount) { AccountView(auth: auth) }
+        .onOpenURL { url in
+            guard url.scheme == "travelagent" else { return }
+            let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
+            guard let ticket = items?.first(where: { $0.name == "ticket" })?.value, !ticket.isEmpty else { return }
+            Task {
+                if await auth.completeWeChat(ticket: ticket) {
+                    showAccount = true
+                }
+            }
+        }
     }
 
     private func syncPrefsFromAccount() {
@@ -192,17 +202,14 @@ struct ContentView: View {
                 showAccount = true
             } label: {
                 ZStack(alignment: .bottomTrailing) {
-                    Group {
-                        if let ui = UIImage(named: "mascot") {
-                            Image(uiImage: ui).resizable().scaledToFill()
-                        } else {
-                            Image(systemName: "person.fill").font(.system(size: 30)).foregroundStyle(Cute.ink)
-                        }
-                    }
-                    .frame(width: 60, height: 60)
-                    .background(Circle().fill(.white))
-                    .clipShape(Circle())
-                    .overlay(Circle().stroke(Cute.ink, lineWidth: 2.5))
+                    StickerImage(
+                        name: "mascot",
+                        fallbackSymbol: "person.fill",
+                        size: 60,
+                        contentMode: .fill,
+                        clip: .circle,
+                        symbolColor: Cute.ink
+                    )
                     // Account badge (login state).
                     Image(systemName: auth.isLoggedIn ? "checkmark.circle.fill" : "plus.circle.fill")
                         .font(.system(size: 20))
@@ -384,9 +391,12 @@ struct ContentView: View {
                 let on = vm.tripType == type
                 Button { vm.tripType = type } label: {
                     HStack(spacing: 7) {
-                        if let ui = UIImage(named: type.iconName) {
-                            Image(uiImage: ui).resizable().scaledToFit().frame(width: 26, height: 26)
-                        }
+                        StickerImage(
+                            name: type.iconName,
+                            fallbackSymbol: type.symbolFallback,
+                            size: 26,
+                            symbolColor: on ? Cute.ink : Cute.ink.opacity(0.6)
+                        )
                         Text(type.label).font(Cute.rounded(15))
                     }
                     .foregroundStyle(on ? Cute.ink : Cute.ink.opacity(0.6))
@@ -539,13 +549,11 @@ struct ContentView: View {
     @ViewBuilder
     private func candidateThumb(_ c: Candidate) -> some View {
         Group {
-            if let name = c.iconName, let ui = UIImage(named: name) {
-                Image(uiImage: ui).resizable().scaledToFit()
-            } else if c.source == "poi" {
+            if c.iconName == nil, c.source == "poi" {
                 Image(systemName: "mappin.circle.fill").resizable().scaledToFit()
                     .foregroundStyle(Cute.pink).padding(6)
-            } else if let ui = UIImage(named: "mascot") {
-                Image(uiImage: ui).resizable().scaledToFit()
+            } else {
+                StickerImage(name: c.iconName ?? "mascot", fallbackSymbol: "sparkles", size: 44)
             }
         }
         .frame(width: 44, height: 44)

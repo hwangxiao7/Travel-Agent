@@ -49,6 +49,7 @@ from app.models.schemas import (
 )
 from app.routers.account import router as account_router
 from app.routers.assets import router as assets_router
+from app.routers.auth_china import router as auth_china_router
 from app.routers.beta import router as beta_router
 from app.routers.taste import router as taste_router
 from app.services.airports import airport_by_iata, nearest_airport
@@ -86,6 +87,7 @@ app.include_router(account_router)
 app.include_router(taste_router)
 app.include_router(beta_router)
 app.include_router(assets_router)
+app.include_router(auth_china_router)
 
 
 @app.get("/api/health")

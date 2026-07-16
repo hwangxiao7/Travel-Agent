@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import UIKit
 
 /// Holds auth state, persists the token in Keychain, and keeps APIClient in sync.
 @MainActor
@@ -7,6 +8,7 @@ import Observation
 final class AuthStore {
     var user: UserAccount?
     var persona: Persona?
+    var authMethods: AuthMethods = AuthMethods()
     var isBusy = false
     var errorMessage: String?
 
@@ -17,6 +19,7 @@ final class AuthStore {
 
     /// Restore a persisted session on launch (validates the token).
     func bootstrap() async {
+        authMethods = (try? await api.authMethods()) ?? AuthMethods()
         // DEBUG-only auto-login for screenshots: DEMO_LOGIN="email|password".
         #if DEBUG
         if let combo = ProcessInfo.processInfo.environment["DEMO_LOGIN"],
@@ -39,6 +42,10 @@ final class AuthStore {
         }
     }
 
+    func refreshAuthMethods() async {
+        authMethods = (try? await api.authMethods()) ?? AuthMethods()
+    }
+
     func register(email: String, password: String, displayName: String) async -> Bool {
         if let msg = Self.validateCredentials(email: email, password: password, registering: true) {
             errorMessage = msg
@@ -57,6 +64,36 @@ final class AuthStore {
         }
         return await run {
             let resp = try await self.api.login(email: email, password: password)
+            await self.apply(resp)
+        }
+    }
+
+    func phoneSend(phone: String) async -> Bool {
+        await run {
+            try await self.api.phoneSend(phone: phone)
+        }
+    }
+
+    func phoneVerify(phone: String, code: String, displayName: String = "") async -> Bool {
+        await run {
+            let resp = try await self.api.phoneVerify(phone: phone, code: code, displayName: displayName)
+            await self.apply(resp)
+        }
+    }
+
+    func startWeChat() async -> Bool {
+        await run {
+            let urlStr = try await self.api.wechatStart(returnTo: "travelagent://auth")
+            guard let url = URL(string: urlStr) else {
+                throw APIError(detail: "Invalid WeChat URL")
+            }
+            UIApplication.shared.open(url)
+        }
+    }
+
+    func completeWeChat(ticket: String) async -> Bool {
+        await run {
+            let resp = try await self.api.wechatExchange(ticket: ticket)
             await self.apply(resp)
         }
     }
@@ -144,7 +181,7 @@ final class AuthStore {
             try await op()
             return true
         } catch let e as APIError {
-            errorMessage = e.detail
+            errorMessage = e.displayMessage
         } catch {
             errorMessage = error.localizedDescription
         }

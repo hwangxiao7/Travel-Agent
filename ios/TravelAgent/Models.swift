@@ -378,7 +378,18 @@ struct SelectResponse: Codable {
 
 struct APIError: Codable, Error, LocalizedError {
     var detail: String
-    var errorDescription: String? { detail }
+    /// Present only for unexpected failures (5xx, transport, decode). Lets a
+    /// user-reported screenshot be matched to the exact backend log line.
+    var traceId: String? = nil
+
+    var errorDescription: String? { displayMessage }
+
+    /// What to show the user: the clean `detail`, plus a short support code when
+    /// the failure was unexpected. Clean business errors (4xx) show no code.
+    var displayMessage: String {
+        guard let t = traceId, !t.isEmpty else { return detail }
+        return "\(detail)\n(code: \(t.suffix(8)))"
+    }
 }
 
 // MARK: - Account / auth
@@ -392,6 +403,15 @@ struct UserAccount: Codable, Equatable {
     var homeLat: Double = 0
     var homeLng: Double = 0
     var defaultPrefs: [Preference] = []
+    var phone: String = ""
+    var hasPassword: Bool = true
+    var authProviders: [String] = []
+}
+
+struct AuthMethods: Codable, Equatable {
+    var email: Bool = true
+    var phone: Bool = false
+    var wechat: Bool = false
 }
 
 struct AuthResponse: Codable {
