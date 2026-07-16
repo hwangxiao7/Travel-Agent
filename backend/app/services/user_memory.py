@@ -22,6 +22,7 @@ from app.services.personalization import UserProfile, build_user_profile
 
 # Behavior event → affinity delta (design doc §14).
 _FEEDBACK_WEIGHTS: dict[str, float] = {
+    "like": 0.22,
     "save": 0.18,
     "visit": 0.15,
     "share": 0.12,

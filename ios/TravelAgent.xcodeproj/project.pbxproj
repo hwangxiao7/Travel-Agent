@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		03FE19F5C08346DE3BF6E2F0 /* LikeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D34A8DF54F2F36DF5368273D /* LikeStore.swift */; };
 		07181978C3E79932DFCB4A62 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9856631D0EC856F1C16F6F1B /* Assets.xcassets */; };
 		0A336DBC6375AAFB19AC1888 /* vibe-creative.png in Resources */ = {isa = PBXBuildFile; fileRef = D2131A11437F8C6F1562A129 /* vibe-creative.png */; };
 		1BD3F5DC3D7BE12C0E8D9756 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29D3FAF2EFC18735C4112E90 /* APIClient.swift */; };
@@ -71,6 +72,7 @@
 		B7663F8109CFE6043A467D2F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		C0628D3B236F0D4F9A747893 /* vibe-nature.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "vibe-nature.png"; sourceTree = "<group>"; };
 		D2131A11437F8C6F1562A129 /* vibe-creative.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "vibe-creative.png"; sourceTree = "<group>"; };
+		D34A8DF54F2F36DF5368273D /* LikeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LikeStore.swift; sourceTree = "<group>"; };
 		D44D910B6152A313C072AD7F /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		D85396CEACD73EBE63EA01D4 /* TravelAgent.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = TravelAgent.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DB3FBF7AC8D5D0688E50F4CA /* vibe-night.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "vibe-night.png"; sourceTree = "<group>"; };
@@ -129,6 +131,7 @@
 				B7663F8109CFE6043A467D2F /* Info.plist */,
 				3BDFA03B60491907A534037B /* Keychain.swift */,
 				403852E13AA72E8E36D64AE6 /* L10n.swift */,
+				D34A8DF54F2F36DF5368273D /* LikeStore.swift */,
 				18527D142EB5A8A5816B8A2D /* Models.swift */,
 				D44D910B6152A313C072AD7F /* Theme.swift */,
 				8EED0EF789AFA961454E94F8 /* TravelAgentApp.swift */,
@@ -241,6 +244,7 @@
 				F4C03FDCE67266CC19079E68 /* ContentView.swift in Sources */,
 				432C4D1025038DAADE65DF5E /* Keychain.swift in Sources */,
 				CA1A808C13D730862F7308EB /* L10n.swift in Sources */,
+				03FE19F5C08346DE3BF6E2F0 /* LikeStore.swift in Sources */,
 				9375EC79C617D851CADC81B4 /* Models.swift in Sources */,
 				4079FD00C3A235A224AAA547 /* Theme.swift in Sources */,
 				D9794C1BA456806B7F90BF0D /* TravelAgentApp.swift in Sources */,

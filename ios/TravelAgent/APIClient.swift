@@ -215,6 +215,11 @@ actor APIClient {
         return try await request("POST", "/auth/wechat/exchange", body: Body(ticket: ticket))
     }
 
+    func postLikesBatch<T: Encodable>(_ body: T) async throws {
+        struct OK: Decodable { let ok: Bool?; let liked: Int?; let unliked: Int? }
+        let _: OK = try await request("POST", "/likes/batch", body: body)
+    }
+
     func updateProfile(displayName: String?, contact: String?, homeLabel: String?,
                        homeLat: Double?, homeLng: Double?, defaultPrefs: [Preference]?) async throws -> UserAccount {
         struct Body: Encodable {

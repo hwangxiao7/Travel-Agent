@@ -8,7 +8,9 @@ struct ActivityIdeaCell: View {
     let isVenueLoading: Bool
     let venues: [ActivityVenue]?
     let venueError: String?
+    let liked: Bool
     let onNearby: () -> Void
+    let onToggleLike: () -> Void
 
     private var zh: Bool { Config.language == "zh" }
 
@@ -27,6 +29,8 @@ struct ActivityIdeaCell: View {
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 16).fill(.white))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Cute.line, lineWidth: 2))
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2, perform: onToggleLike)
     }
 
     private var header: some View {
@@ -38,7 +42,15 @@ struct ActivityIdeaCell: View {
                 allowRemote: true
             )
             VStack(alignment: .leading, spacing: 2) {
-                Text(idea.name).font(Cute.rounded(16, .bold)).foregroundStyle(Cute.ink)
+                HStack(spacing: 6) {
+                    Text(idea.name).font(Cute.rounded(16, .bold)).foregroundStyle(Cute.ink)
+                    if liked {
+                        Image(systemName: "heart.fill")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(Cute.pink)
+                            .accessibilityLabel(zh ? "已喜欢" : "Liked")
+                    }
+                }
                 Text(String(format: "%.2f", idea.matchScore))
                     .font(Cute.rounded(12, .semibold))
                     .foregroundStyle(Cute.ink.opacity(0.45))

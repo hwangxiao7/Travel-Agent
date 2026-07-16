@@ -200,6 +200,7 @@ export default function App() {
               itineraries={itineraries}
               detailLoading={detailLoading}
               searchPath={searchPath}
+              origin={{ ...origin, label: originLabel || origin.label }}
               onToggle={(c) => void toggleExpand(c)}
             />
           </>

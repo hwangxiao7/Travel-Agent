@@ -74,6 +74,8 @@ export function AccountModal({ open, onClose, user, onUser }: Props) {
           ? await login(email, password)
           : await register(email, password, name || email.split('@')[0])
       onUser(res.user)
+      const { flushLikes } = await import('../likes')
+      await flushLikes()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed')
     } finally {
@@ -99,6 +101,8 @@ export function AccountModal({ open, onClose, user, onUser }: Props) {
     try {
       const res = await phoneVerify(phone, otp, name)
       onUser(res.user)
+      const { flushLikes } = await import('../likes')
+      await flushLikes()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed')
     } finally {

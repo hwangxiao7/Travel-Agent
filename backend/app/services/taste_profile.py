@@ -28,7 +28,7 @@ from app.services.embeddings import Vector, embed_texts
 
 # Exponential decay: a snippet's influence halves every HALF_LIFE_DAYS.
 _HALF_LIFE_DAYS = 120.0
-_FEEDBACK_LIKE = {"save", "visit", "share"}
+_FEEDBACK_LIKE = {"save", "visit", "share", "like"}
 
 
 @dataclass

@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { fetchActivities, fetchActivityVenues } from '../api/client'
 import { useI18n } from '../i18n'
+import { isLiked, likesVersion, setLikeOrigin, subscribeLikes, toggleLike } from '../likes'
 import type { ActivityIdea, ActivityVenue, Location } from '../types'
 import { AssetImg } from './AssetImg'
 
@@ -22,6 +23,12 @@ export function SurprisePanel({ origin }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null)
   const [venues, setVenues] = useState<Record<string, ActivityVenue[]>>({})
   const [venueLoading, setVenueLoading] = useState<string | null>(null)
+  const likeTick = useSyncExternalStore(subscribeLikes, likesVersion)
+  void likeTick
+
+  useEffect(() => {
+    setLikeOrigin(origin)
+  }, [origin])
 
   const load = async (interests = mood) => {
     setLoading(true)
@@ -137,10 +144,26 @@ export function SurprisePanel({ origin }: Props) {
 
       <ul className="idea-list">
         {ideas.map((idea) => (
-          <li key={idea.key} className="idea-card">
+          <li
+            key={idea.key}
+            className={`idea-card${isLiked('activity', idea.key) ? ' liked' : ''}`}
+            onDoubleClick={() =>
+              toggleLike({
+                kind: 'activity',
+                key: idea.key,
+                name: idea.name,
+                tags: idea.tags,
+                blurb: idea.reason || idea.blurb || '',
+              })
+            }
+            title={lang === 'zh' ? '双击标记喜欢' : 'Double-click to like'}
+          >
             <div className="idea-head">
               <AssetImg iconKey={idea.icon_key || 'mascot'} alt={idea.name} size={48} />
-              <strong>{idea.name}</strong>
+              <strong>
+                {idea.name}
+                {isLiked('activity', idea.key) ? <span className="like-heart">♥</span> : null}
+              </strong>
               <span className="chip">{idea.duration_h ? `${idea.duration_h}h` : ''}</span>
             </div>
             {(idea.blurb || idea.reason) && (

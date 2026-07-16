@@ -387,13 +387,17 @@ textarea {
   flex: 1;
 }
 
-.asset-img {
-  flex-shrink: 0;
-  width: 48px;
-  height: 48px;
-  object-fit: contain;
-  border-radius: 12px;
+.idea-card.liked,
+.cand-row.liked {
+  outline: 2px solid var(--pink);
 }
+
+.like-heart {
+  color: var(--pink);
+  margin-left: 0.35rem;
+  font-size: 0.95em;
+}
+
 
 .chip-row {
   display: flex;

@@ -4,6 +4,7 @@ struct ContentView: View {
     @State private var vm = TripViewModel()
     @State private var activities = ActivitiesViewModel()
     @State private var auth = AuthStore()
+    @State private var likes = LikeStore.shared
     @State private var showAccount = false
     /// Mutually exclusive: only one of Surprise / Trip planner is expanded.
     @State private var openModule: HomeModule = .surprise
@@ -59,6 +60,7 @@ struct ContentView: View {
         .task { await vm.bootstrapDemoIfRequested() }
         .task { await activities.load(interests: "") }
         .task {
+            likes.bootstrap()
             await auth.bootstrap()
             syncPrefsFromAccount()
             if ProcessInfo.processInfo.environment["SHOW_ACCOUNT"] != nil {
@@ -316,8 +318,19 @@ struct ContentView: View {
                     isVenueLoading: activities.venueLoadingKey == idea.key,
                     venues: activities.venuesByKey[idea.key],
                     venueError: activities.venueErrorByKey[idea.key],
+                    liked: likes.isLiked(kind: "activity", key: idea.key),
                     onNearby: {
                         Task { await activities.toggleVenues(for: idea, origin: vm.origin) }
+                    },
+                    onToggleLike: {
+                        likes.setOrigin(vm.origin)
+                        _ = likes.toggle(
+                            kind: "activity",
+                            key: idea.key,
+                            name: idea.name,
+                            tags: idea.tags,
+                            blurb: idea.reason.isEmpty ? idea.blurb : idea.reason
+                        )
                     }
                 )
             }
@@ -488,13 +501,26 @@ struct ContentView: View {
     @ViewBuilder
     private func candidateCell(_ c: Candidate) -> some View {
         let expanded = vm.expandedName == c.name
+        let liked = likes.isLiked(kind: "destination", key: c.name)
         VStack(spacing: 0) {
             Button {
                 Task { await vm.toggleExpand(c) }
             } label: {
-                candidateRow(c, expanded: expanded)
+                candidateRow(c, expanded: expanded, liked: liked)
             }
             .buttonStyle(.plain)
+            .simultaneousGesture(
+                TapGesture(count: 2).onEnded {
+                    likes.setOrigin(vm.origin)
+                    _ = likes.toggle(
+                        kind: "destination",
+                        key: c.name,
+                        name: c.name,
+                        tags: c.semanticTags,
+                        blurb: c.explanation.isEmpty ? c.highlight : c.explanation
+                    )
+                }
+            )
 
             if expanded {
                 Group {
@@ -520,12 +546,17 @@ struct ContentView: View {
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: expanded)
     }
 
-    private func candidateRow(_ c: Candidate, expanded: Bool) -> some View {
+    private func candidateRow(_ c: Candidate, expanded: Bool, liked: Bool) -> some View {
         HStack(alignment: .top, spacing: 10) {
             candidateThumb(c)
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text(c.name).font(Cute.rounded(16))
+                    if liked {
+                        Image(systemName: "heart.fill")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(Cute.pink)
+                    }
                     Spacer()
                     Text(c.travelMode == "fly" ? "✈ \(c.driveTime)" : c.driveTime)
                         .font(Cute.rounded(13, .semibold))

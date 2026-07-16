@@ -1,5 +1,7 @@
+import { useSyncExternalStore } from 'react'
 import { useI18n } from '../i18n'
-import type { Candidate, Itinerary } from '../types'
+import { isLiked, likesVersion, setLikeOrigin, subscribeLikes, toggleLike } from '../likes'
+import type { Candidate, Itinerary, Location } from '../types'
 
 interface Props {
   candidates: Candidate[]
@@ -7,6 +9,7 @@ interface Props {
   itineraries: Record<string, Itinerary>
   detailLoading: string | null
   searchPath?: string | null
+  origin?: Location
   onToggle: (c: Candidate) => void
 }
 
@@ -36,9 +39,12 @@ export function CandidatesAccordion({
   itineraries,
   detailLoading,
   searchPath,
+  origin,
   onToggle,
 }: Props) {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
+  useSyncExternalStore(subscribeLikes, likesVersion)
+  if (origin) setLikeOrigin(origin)
   if (!candidates.length) return null
 
   const buckets = new Map<string, Candidate[]>()
@@ -74,13 +80,31 @@ export function CandidatesAccordion({
             {items.map((c) => {
               const open = expandedName === c.name
               const it = itineraries[c.name]
+              const liked = isLiked('destination', c.name)
               return (
-                <div key={c.name} className={`cand-row ${open ? 'open' : ''}`}>
+                <div
+                  key={c.name}
+                  className={`cand-row ${open ? 'open' : ''}${liked ? ' liked' : ''}`}
+                  onDoubleClick={(e) => {
+                    e.preventDefault()
+                    toggleLike({
+                      kind: 'destination',
+                      key: c.name,
+                      name: c.name,
+                      tags: c.semantic_tags || [],
+                      blurb: c.explanation || c.highlight || '',
+                    })
+                  }}
+                  title={lang === 'zh' ? '双击标记喜欢' : 'Double-click to like'}
+                >
                   <button type="button" className="cand-btn" onClick={() => onToggle(c)}>
                     <img className="cand-thumb" src={iconFor(c)} alt="" />
                     <div className="cand-main">
                       <div className="cand-top">
-                        <strong>{c.name}</strong>
+                        <strong>
+                          {c.name}
+                          {liked ? <span className="like-heart">♥</span> : null}
+                        </strong>
                         <span className="cand-time">
                           {c.travel_mode === 'fly' ? `✈ ${c.drive_time}` : c.drive_time}
                         </span>
