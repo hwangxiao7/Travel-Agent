@@ -151,6 +151,10 @@ Feedback:  提交 → 入库 → 后台 SMTP 告警(低分标红) → X-Admin-To
 - SearchResponse 带回 `search_path` / `validation` / intent，便于调 Agent 决策  
 - Eval 目录保留 RAG 金标方向  
 - LLM token / temperature 可配置，避免「黑盒一次调不通」
+- **端到端 `trace_id`**：iOS 发 `x-trace-id`，服务端回写 `X-Trace-Id` 并落每条日志；出错时把短码回传给用户——一个 id 串起「客户端 → 网关 → LLM/RAG/外部 API」整条链  
+- **500 全局兜底 handler**：未捕获异常连同堆栈写进结构化日志（带 `trace_id`），杜绝「白屏无痕」  
+- **静默降级不再黑箱**：`flights/geocode/events/poi_search` 等 `except` 补 `record_external_failure`，空结果/降级能查到「为什么」  
+- **客户端也有日志**：iOS `AppLog` 本地滚动 JSON + 系统统一日志，捕获「根本没到后端」的传输失败（超时/断网/DNS）
 
 ### 5.5 刻意不做的（边界即工程能力）
 
@@ -187,6 +191,7 @@ Travel-Agent/
 5. 双击喜欢批量进 Taste RAG  
 6. Prompt system/user 拆分、LLM 用量与 temperature 控制  
 7. 公开文档脱敏（无内部 Ark / 隧道指引）  
+8. 可观测性加固：端到端 `trace_id`、500 全局兜底(带栈)、静默降级补日志、日志滚动 + `LOG_LEVEL` 可配、噪声降采样、metric 路径模板化  
 8. **群体智慧数据层（P1+P2）**：全漏斗埋点 + 每晚聚合 + 性格分桶 + k-匿名 + opt-out  
 9. **反馈闭环**：入库 + 低分邮件告警 + 受保护只读接口  
 10. **就近场馆**：地域受限 vs 随处可玩分类 + 距离重排  
