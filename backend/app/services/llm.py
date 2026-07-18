@@ -170,6 +170,98 @@ async def generate_summary(
         return ""
 
 
+async def analyze_image_json(
+    *,
+    image_b64: str,
+    mime: str,
+    prompt: str,
+    system: str,
+    json_mode: bool = True,
+    temperature: float = 0.2,
+) -> str:
+    """Vision LLM: image + instructions → text (JSON when json_mode)."""
+    from app.observability import atraced, llm_latency_ms, record_external_failure
+
+    async with atraced(
+        "LLM vision",
+        attributes={"llm.provider": settings.llm_provider, "llm.mime": mime},
+        latency_metric=llm_latency_ms,
+    ) as span:
+        provider = settings.llm_provider.lower()
+        if provider == "template":
+            return ""
+
+        if provider == "anthropic" and settings.anthropic_api_key:
+            import anthropic
+
+            try:
+                client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+                content: list[dict] = [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": mime,
+                            "data": image_b64,
+                        },
+                    },
+                    {"type": "text", "text": prompt},
+                ]
+                extra: dict = {}
+                if system:
+                    extra["system"] = system
+                msg = await client.messages.create(
+                    model=settings.anthropic_model,
+                    max_tokens=900,
+                    temperature=temperature,
+                    messages=[{"role": "user", "content": content}],
+                    **extra,
+                )
+                _record_token_usage(span, getattr(msg, "usage", None), "anthropic")
+                block = msg.content[0]
+                return block.text if hasattr(block, "text") else str(block)
+            except Exception:
+                record_external_failure("llm")
+                return ""
+
+        if settings.openai_api_key:
+            from openai import AsyncOpenAI
+
+            try:
+                client_kwargs = {"api_key": settings.openai_api_key}
+                if settings.openai_base_url:
+                    client_kwargs["base_url"] = settings.openai_base_url
+                client = AsyncOpenAI(**client_kwargs)
+                extra = {}
+                if json_mode:
+                    extra["response_format"] = {"type": "json_object"}
+                user_content: list[dict] = [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{mime};base64,{image_b64}"},
+                    },
+                ]
+                messages: list[dict] = []
+                if system:
+                    messages.append({"role": "system", "content": system})
+                messages.append({"role": "user", "content": user_content})
+                resp = await client.chat.completions.create(
+                    model=settings.openai_model,
+                    max_tokens=900,
+                    temperature=temperature,
+                    messages=messages,
+                    **extra,
+                )
+                _record_token_usage(span, getattr(resp, "usage", None), "openai")
+                return resp.choices[0].message.content or ""
+            except Exception:
+                record_external_failure("llm")
+                return ""
+
+        return ""
+
+
 def parse_itinerary_json(raw: str) -> dict | None:
     try:
         start = raw.find("{")

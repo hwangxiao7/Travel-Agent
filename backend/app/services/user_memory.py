@@ -16,7 +16,7 @@ from dataclasses import asdict, dataclass, field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db import FeedbackEvent, PlaceReview, Trip, User
+from app.db import FeedbackEvent, PlaceReview, Trip, User, UserInspirationCapture
 from app.services.embeddings import Vector, embed_query, embed_texts
 from app.services.personalization import UserProfile, build_user_profile
 
@@ -208,6 +208,33 @@ def build_memory_corpus(db: Session, user: User) -> list[MemoryDoc]:
                 )
     except Exception:
         pass
+
+    for row in db.scalars(
+        select(UserInspirationCapture)
+        .where(UserInspirationCapture.user_id == user.id)
+        .order_by(UserInspirationCapture.created_at.desc())
+    ).all():
+        try:
+            must_bring = json.loads(row.must_bring_json or "[]")
+            must_tips = json.loads(row.must_do_tips_json or "[]")
+            times = json.loads(row.suggested_times_json or "[]")
+        except json.JSONDecodeError:
+            must_bring, must_tips, times = [], [], []
+        text = (
+            f"Saved inspiration: {row.activity_title}. {row.summary or ''} "
+            f"Times: {', '.join(str(t) for t in times[:4]) or 'n/a'}. "
+            f"Must bring: {', '.join(str(x) for x in must_bring[:6]) or 'n/a'}. "
+            f"Tips: {'; '.join(str(x) for x in must_tips[:6]) or 'n/a'}."
+        )
+        docs.append(
+            MemoryDoc(
+                id=f"inspiration:{row.id}",
+                kind="screenshot",
+                text=text.strip(),
+                destination=row.activity_title,
+                weight=1.35,
+            )
+        )
 
     return docs
 

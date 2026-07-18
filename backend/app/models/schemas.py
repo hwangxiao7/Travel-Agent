@@ -296,6 +296,32 @@ class TasteAddRequest(BaseModel):
     polarity: float = 1.0  # +1 like / -1 dislike
 
 
+class InspirationPlaceOut(BaseModel):
+    name: str = ""
+    name_en: str = ""
+    lat: float = 0.0
+    lng: float = 0.0
+    note: str = ""
+
+
+class InspirationCaptureOut(BaseModel):
+    id: int
+    activity_title: str = ""
+    summary: str = ""
+    places: list[InspirationPlaceOut] = Field(default_factory=list)
+    suggested_times: list[str] = Field(default_factory=list)
+    duration_hint: str = ""
+    must_bring: list[str] = Field(default_factory=list)
+    must_do_tips: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    created_at: str = ""
+
+
+class InspirationScreenshotResponse(BaseModel):
+    ok: bool = True
+    capture: InspirationCaptureOut
+
+
 class ExperienceFeedbackRequest(BaseModel):
     name: str
     verdict: str  # like | dislike | crowded | again

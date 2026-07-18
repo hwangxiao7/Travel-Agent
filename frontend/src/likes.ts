@@ -1,6 +1,6 @@
-import { getToken } from './client'
-import { API_BASE } from './endpoints'
-import type { Location } from '../types'
+import { getToken } from './api/client'
+import { API_BASE } from './api/endpoints'
+import type { Location } from './types'
 
 export type LikeKind = 'activity' | 'destination'
 

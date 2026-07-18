@@ -569,3 +569,31 @@ struct ActivityVenuesResponse: Codable {
     var activityName: String
     var venues: [ActivityVenue]
 }
+
+// MARK: - Screenshot inspiration (private Taste RAG)
+
+struct InspirationPlace: Codable {
+    var name: String = ""
+    var nameEn: String = ""
+    var lat: Double = 0
+    var lng: Double = 0
+    var note: String = ""
+}
+
+struct InspirationCapture: Codable {
+    var id: Int
+    var activityTitle: String = ""
+    var summary: String = ""
+    var places: [InspirationPlace] = []
+    var suggestedTimes: [String] = []
+    var durationHint: String = ""
+    var mustBring: [String] = []
+    var mustDoTips: [String] = []
+    var tags: [String] = []
+    var createdAt: String = ""
+}
+
+struct InspirationScreenshotResponse: Codable {
+    var ok: Bool = true
+    var capture: InspirationCapture
+}

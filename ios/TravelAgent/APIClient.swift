@@ -302,6 +302,61 @@ actor APIClient {
         try await post("/activities/venues", body: body)
     }
 
+    /// User screenshot → private taste extraction (multipart; auth required).
+    func uploadInspirationScreenshot(
+        imageData: Data,
+        mime: String,
+        originLat: Double,
+        originLng: Double,
+        language: String
+    ) async throws -> InspirationScreenshotResponse {
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var body = Data()
+        func appendField(_ name: String, _ value: String) {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(value)\r\n".data(using: .utf8)!)
+        }
+        appendField("language", language)
+        appendField("origin_lat", String(originLat))
+        appendField("origin_lng", String(originLng))
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append(
+            "Content-Disposition: form-data; name=\"image\"; filename=\"screenshot.jpg\"\r\n"
+                .data(using: .utf8)!
+        )
+        body.append("Content-Type: \(mime)\r\n\r\n".data(using: .utf8)!)
+        body.append(imageData)
+        body.append("\r\n".data(using: .utf8)!)
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+
+        let url = Config.baseURL.appendingPathComponent(Config.apiPrefix + "/inspiration/screenshot")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        if let token {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        req.timeoutInterval = 120
+        let traceId = Self.newTraceId()
+        req.setValue(traceId, forHTTPHeaderField: "x-trace-id")
+        req.httpBody = body
+
+        let data: Data
+        let resp: URLResponse
+        do {
+            (data, resp) = try await session.data(for: req)
+        } catch {
+            AppLog.shared.error("api transport failed",
+                ["method": "POST", "path": "/inspiration/screenshot", "trace_id": traceId,
+                 "error": String(describing: error)])
+            throw APIError(detail: error.localizedDescription, traceId: traceId)
+        }
+        let tid = Self.traceId(resp) ?? traceId
+        try Self.check(resp, data, traceId: tid)
+        return try Self.decoder.decode(InspirationScreenshotResponse.self, from: data)
+    }
+
     /// Raw bytes for a sticker key (webp/png). Used by AssetStore LRU.
     func fetchAssetData(key: String) async throws -> Data {
         var comps = URLComponents(url: Config.baseURL, resolvingAgainstBaseURL: false)!

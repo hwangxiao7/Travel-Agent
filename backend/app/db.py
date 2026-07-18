@@ -199,6 +199,30 @@ class TrendingSpot(Base):
     last_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
 
+class UserInspirationCapture(Base):
+    """Private screenshot inspiration — per user only, never shared catalog.
+
+    Structured planning facts from a user-uploaded screenshot. The image bytes
+    are processed in memory and discarded; only neutral summaries + constraints
+    are stored for that user's Taste RAG / planner context.
+    """
+
+    __tablename__ = "user_inspiration_captures"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    activity_title: Mapped[str] = mapped_column(String(200), default="")
+    summary: Mapped[str] = mapped_column(String(320), default="")
+    places_json: Mapped[str] = mapped_column(Text, default="[]")
+    suggested_times_json: Mapped[str] = mapped_column(Text, default="[]")
+    duration_hint: Mapped[str] = mapped_column(String(80), default="")
+    must_bring_json: Mapped[str] = mapped_column(Text, default="[]")
+    must_do_tips_json: Mapped[str] = mapped_column(Text, default="[]")
+    tags_json: Mapped[str] = mapped_column(Text, default="[]")
+    extraction_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
 class TasteSnippet(Base):
     """A persistent, free-form taste signal for one user.
 

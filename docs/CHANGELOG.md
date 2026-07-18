@@ -3,6 +3,12 @@
 记录每次实质性更新:用了什么技术、做了哪些改进、影响范围。最新的放最上面。
 （规范见 `.cursor/rules/document-and-commit-updates.mdc`）
 
+## 2026-07-18 — 用户截图种草 → 私有 Taste RAG
+
+- 技术/方案:新增 `POST /api/inspiration/screenshot`（multipart 上传，需登录）。Vision LLM（OpenAI/Anthropic 兼容，`analyze_image_json`）从用户自愿提交的截图提取 JSON：活动名、地点、建议时间、时长、`must_bring`、`must_do_tips`、开放词表 tags；**原图内存处理后丢弃**。结构化结果写入 `UserInspirationCapture` + `TasteSnippet`（source `shot:{id}`），并纳入 `user_memory.build_memory_corpus` 的 screenshot 检索。可选 Nominatim 地编仅补坐标事实；**默认不写** `TrendingSpot` 公共库。iOS Account →「保存种草」`InspirationCaptureView`（PhotosPicker + multipart 上传）。
+- 改进:合规路径下让用户把小红书/社媒截图变成个人口味与规划约束（必带、几点去等），不依赖未授权 scraping；为后续「聚合提名 → 核实 → 扩 catalog」留 Layer A 入口。动机:产品「懂用户想玩什么」且避开版权雷区。
+- 影响范围:`backend/app/services/{llm,inspiration_screenshot,user_memory}.py`、`backend/app/routers/inspiration.py`、`backend/app/db.py`（`user_inspiration_captures`）、`backend/app/models/schemas.py`、`backend/app/main.py`、`backend/requirements.txt`（`python-multipart`）；`ios/TravelAgent/{InspirationCaptureView,APIClient,Models,AccountView}.swift`、`ios/TravelAgent.xcodeproj/project.pbxproj`；`docs/架构技术选型.md` §13。
+
 ## 2026-07-18 — 代码库记忆：Serena MCP + 代码地图规则（省 token）
 
 - 技术/方案:引入 [Serena](https://github.com/oraios/serena) 作为项目级 MCP(`.cursor/mcp.json`,`ide-assistant` context,经 `uvx` 拉起,已装 `uv` 到 `~/.local/bin`)。Serena 基于 LSP 提供符号级检索(`find_symbol` / `find_referencing_symbols` / `get_symbols_overview`)与**跨会话持久记忆**(`.serena/memories/`),并有 `.serena/cache/` 增量索引(按 mtime/git hash 只重解析改动文件)。项目已用 `serena project create --language python --language typescript` 生成 `.serena/project.yml` 并执行 `project index` 建符号缓存。

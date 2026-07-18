@@ -184,6 +184,9 @@ private struct SignedInView: View {
         NavigationLink { MyReviewsView() } label: {
             rowLabel("My reviews", "star.fill")
         }
+        NavigationLink { InspirationCaptureView(auth: auth) } label: {
+            rowLabel(L10n.t("Save inspiration", "保存种草"), "photo.on.rectangle.angled")
+        }
 
         // Settings hub
         sectionHeader("Settings")
