@@ -6,6 +6,7 @@ struct ContentView: View {
     @State private var auth = AuthStore()
     @State private var likes = LikeStore.shared
     @State private var showAccount = false
+    @State private var showInspiration = false
     /// Mutually exclusive: only one of Surprise / Trip planner is expanded.
     @State private var openModule: HomeModule = .surprise
     @AppStorage("app.language") private var languageRaw: String = ""
@@ -28,6 +29,7 @@ struct ContentView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         header
                         modeSwitcher
+                        inspirationBanner
                         activeModule
                         if openModule == .planner, let error = vm.errorMessage {
                             Text(error)
@@ -83,6 +85,17 @@ struct ContentView: View {
             }
         }
         .sheet(isPresented: $showAccount) { AccountView(auth: auth) }
+        .sheet(isPresented: $showInspiration) {
+            NavigationStack {
+                InspirationCaptureView(auth: auth)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button(L10n.t("Done", "完成")) { showInspiration = false }
+                                .font(Cute.rounded(15))
+                        }
+                    }
+            }
+        }
         .fullScreenCover(isPresented: $showOnboarding) {
             OnboardingView {
                 onboardingSeen = true
@@ -179,6 +192,72 @@ struct ContentView: View {
         .buttonStyle(.plain)
         .accessibilityLabel(title)
         .accessibilityAddTraits(on ? .isSelected : [])
+    }
+
+    /// Shared across Surprise + Trip planner — always visible below mode switcher.
+    private var inspirationBanner: some View {
+        Button {
+            if auth.isLoggedIn {
+                showInspiration = true
+            } else {
+                showAccount = true
+            }
+        } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(.white)
+                        .frame(width: 54, height: 54)
+                    Image(systemName: "photo.on.rectangle.angled")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(Cute.pink)
+                }
+                .overlay(Circle().stroke(Cute.ink, lineWidth: 2))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L10n.t("Spotted a post you love?", "看到种草帖？先存下来"))
+                        .font(Cute.rounded(17, .heavy))
+                        .foregroundStyle(Cute.ink)
+                    Text(
+                        auth.isLoggedIn
+                            ? L10n.t("Upload screenshot — places, timing & must-know tips", "上传截图，提取地点、时间和必带/必看")
+                            : L10n.t("Log in to save to your taste profile", "登录后保存到个人口味档案")
+                    )
+                    .font(Cute.rounded(12, .medium))
+                    .foregroundStyle(Cute.ink.opacity(0.62))
+                    .lineLimit(2)
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: auth.isLoggedIn ? "arrow.up.circle.fill" : "person.crop.circle.badge.plus")
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundStyle(Cute.ink.opacity(0.72))
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(hex: 0xFFF0C2), Cute.pinkSoft, Cute.mintSoft],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(Cute.ink, lineWidth: 2.5)
+            )
+            .background(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Cute.ink.opacity(0.18))
+                    .offset(x: 3, y: 3)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(L10n.t("Save post screenshot", "保存种草截图"))
     }
 
     @ViewBuilder

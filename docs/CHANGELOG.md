@@ -3,6 +3,18 @@
 记录每次实质性更新:用了什么技术、做了哪些改进、影响范围。最新的放最上面。
 （规范见 `.cursor/rules/document-and-commit-updates.mdc`）
 
+## 2026-07-18 — 种草入口：模式切换下共用醒目横幅
+
+- 技术/方案:iOS / Web 将种草入口从「今天干嘛」模块内上移到 **模式切换器下方**，两个模块（Surprise / Trip planner）共用同一条渐变贴纸横幅；Web `InspirationUpload` 新增 `variant="banner"`（硬阴影 + 大图标 + 标题副标题）；Account 内仍保留 block 形态完整上传。
+- 改进:入口更醒目、切换模块不消失，符合「随时存种草帖」的使用场景。动机:用户反馈主屏找不到、且希望在规划模块也能直接上传。
+- 影响范围:`ios/TravelAgent/ContentView.swift`；`frontend/src/components/{InspirationUpload,SurprisePanel}.tsx`、`frontend/src/{App.tsx,App.css,i18n.tsx}`；`docs/CHANGELOG.md`。
+
+## 2026-07-18 — 种草截图入口可见性（今天干嘛 + Web）
+
+- 技术/方案:iOS `ContentView` 在「今天干嘛」正文顶部增加「保存种草截图」卡片（未登录跳转 Account）；Web 新增 `InspirationUpload` 组件，挂到 `SurprisePanel`（compact CTA）与 `AccountModal`（完整说明 + 结果展示）；`uploadInspirationScreenshot` 走 multipart + Bearer；i18n 中英 `inspiration.*` / `account.inspiration`。
+- 改进:原先入口只在 iOS Account → My stuff，用户在主屏找不到；现在在主功能页和 Web 首页均可发现。动机:降低功能发现成本，与「今天干嘛」使用场景一致。
+- 影响范围:`ios/TravelAgent/ContentView.swift`；`frontend/src/components/{InspirationUpload,SurprisePanel,AccountModal}.tsx`、`frontend/src/{App.tsx,App.css,i18n.tsx,types.ts,api/{client,endpoints}.ts}`；`docs/CHANGELOG.md`。
+
 ## 2026-07-18 — 用户截图种草 → 私有 Taste RAG
 
 - 技术/方案:新增 `POST /api/inspiration/screenshot`（multipart 上传，需登录）。Vision LLM（OpenAI/Anthropic 兼容，`analyze_image_json`）从用户自愿提交的截图提取 JSON：活动名、地点、建议时间、时长、`must_bring`、`must_do_tips`、开放词表 tags；**原图内存处理后丢弃**。结构化结果写入 `UserInspirationCapture` + `TasteSnippet`（source `shot:{id}`），并纳入 `user_memory.build_memory_corpus` 的 screenshot 检索。可选 Nominatim 地编仅补坐标事实；**默认不写** `TrendingSpot` 公共库。iOS Account →「保存种草」`InspirationCaptureView`（PhotosPicker + multipart 上传）。

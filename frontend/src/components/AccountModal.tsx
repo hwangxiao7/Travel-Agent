@@ -16,16 +16,18 @@ import {
   wechatStart,
 } from '../api/client'
 import { useI18n } from '../i18n'
-import type { AuthMethods, AuthUser, Persona, QuizQuestion } from '../types'
+import type { AuthMethods, AuthUser, Location, Persona, QuizQuestion } from '../types'
+import { InspirationUpload } from './InspirationUpload'
 
 interface Props {
   open: boolean
   onClose: () => void
   user: AuthUser | null
   onUser: (u: AuthUser | null) => void
+  origin?: Location
 }
 
-export function AccountModal({ open, onClose, user, onUser }: Props) {
+export function AccountModal({ open, onClose, user, onUser, origin }: Props) {
   const { t, lang, setLang } = useI18n()
   const [mode, setMode] = useState<'login' | 'register' | 'phone'>('login')
   const [email, setEmail] = useState('')
@@ -321,6 +323,14 @@ export function AccountModal({ open, onClose, user, onUser }: Props) {
                   </button>
                 </div>
               )}
+            </section>
+
+            <section className="sticker cream nested">
+              <h3>{t('account.inspiration')}</h3>
+              <InspirationUpload
+                loggedIn={!!user}
+                origin={origin ?? { lat: 37.7749, lng: -122.4194, label: 'SF' }}
+              />
             </section>
 
             <section className="sticker cream nested">

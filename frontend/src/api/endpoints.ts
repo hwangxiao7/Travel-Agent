@@ -24,6 +24,7 @@ export const ENDPOINTS = {
   persona: '/api/me/persona',
   personaQuiz: '/api/me/persona/quiz',
   betaFeedback: '/api/beta/feedback',
+  inspirationScreenshot: '/api/inspiration/screenshot',
 } as const
 
 export type EndpointKey = keyof typeof ENDPOINTS

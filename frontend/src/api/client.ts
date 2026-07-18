@@ -10,7 +10,7 @@ import type {
   QuizQuestion,
   TripType,
 } from '../types'
-import { apiUrl, assetUrl, type EndpointKey } from './endpoints'
+import { API_BASE, ENDPOINTS, apiUrl, assetUrl, type EndpointKey } from './endpoints'
 
 export { assetUrl }
 
@@ -308,4 +308,31 @@ export async function sendBetaFeedback(body: {
   destination?: string
 }) {
   return req<{ ok: boolean }>('POST', 'betaFeedback', { ...body, page: 'web' })
+}
+
+export async function uploadInspirationScreenshot(
+  file: File,
+  origin: Location,
+  language: string,
+) {
+  const token = getToken()
+  if (!token) throw new Error('Log in required')
+
+  const form = new FormData()
+  form.append('image', file)
+  form.append('language', language)
+  form.append('origin_lat', String(origin.lat))
+  form.append('origin_lng', String(origin.lng))
+
+  const res = await fetch(`${API_BASE}${ENDPOINTS.inspirationScreenshot}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    const detail = (err as { detail?: string }).detail
+    throw new Error(typeof detail === 'string' ? detail : 'Upload failed')
+  }
+  return res.json() as Promise<{ ok: boolean; capture: import('../types').InspirationCapture }>
 }

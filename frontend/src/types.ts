@@ -134,6 +134,27 @@ export interface QuizQuestion {
   options: QuizOption[]
 }
 
+export interface InspirationPlace {
+  name: string
+  name_en?: string
+  lat?: number
+  lng?: number
+  note?: string
+}
+
+export interface InspirationCapture {
+  id: number
+  activity_title: string
+  summary: string
+  places: InspirationPlace[]
+  suggested_times: string[]
+  duration_hint: string
+  must_bring: string[]
+  must_do_tips: string[]
+  tags: string[]
+  created_at: string
+}
+
 export const PREFERENCES: Preference[] = [
   'national-park',
   'hiking',

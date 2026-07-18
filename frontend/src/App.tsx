@@ -10,6 +10,7 @@ import { AccountModal } from './components/AccountModal'
 import { BetaFeedback } from './components/BetaFeedback'
 import { CandidatesAccordion } from './components/CandidatesAccordion'
 import { ModeSwitcher } from './components/ModeSwitcher'
+import { InspirationUpload } from './components/InspirationUpload'
 import { PlannerPanel } from './components/PlannerPanel'
 import { SurprisePanel } from './components/SurprisePanel'
 import { useI18n } from './i18n'
@@ -171,6 +172,13 @@ export default function App() {
       <main className="home">
         <ModeSwitcher module={module} onChange={setModule} />
 
+        <InspirationUpload
+          variant="banner"
+          loggedIn={!!user}
+          origin={{ ...origin, label: originLabel || origin.label }}
+          onNeedLogin={() => setShowAccount(true)}
+        />
+
         {module === 'surprise' ? (
           <SurprisePanel origin={{ ...origin, label: originLabel || origin.label }} />
         ) : (
@@ -222,6 +230,7 @@ export default function App() {
         onClose={() => setShowAccount(false)}
         user={user}
         onUser={setUser}
+        origin={{ ...origin, label: originLabel || origin.label }}
       />
 
       <BetaFeedback

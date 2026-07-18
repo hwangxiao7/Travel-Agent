@@ -29,6 +29,22 @@ cd backend && source .venv/bin/activate
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
+### Docker（后端 → 日后 EC2）
+
+只打包 API；密钥用 `.env` 注入，SQLite 用 volume 持久化。
+
+```bash
+# 仓库根目录
+docker build -t travel-agent-api .
+docker run -d --name travel-agent -p 8000:8000 \
+  --env-file .env \
+  -v travel-agent-data:/app/backend/data \
+  travel-agent-api
+# 探活: curl http://127.0.0.1:8000/api/health
+```
+
+EC2 上同命令即可（安全组放行 8000 或前面加 Nginx/ALB）。生产务必改掉默认 `JWT_SECRET`，并设置 `CORS_ORIGINS`。
+
 ### Web
 
 ```bash

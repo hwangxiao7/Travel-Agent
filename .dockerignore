@@ -1,0 +1,32 @@
+.git
+.github
+.serena
+.cursor
+.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+
+# Local secrets & runtime state (inject at run time)
+.env
+.env.*
+!.env.example
+backend/data/
+backend/.venv/
+**/travel_agent.log*
+
+# Client apps — not part of the API image
+frontend/node_modules/
+frontend/dist/
+ios/
+ios/build/
+
+# Docs / IDE noise
+docs/
+*.md
+!README.md
+.DS_Store
+**/*.xcodeproj
+**/*.xcworkspace

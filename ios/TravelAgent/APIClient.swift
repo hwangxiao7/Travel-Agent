@@ -420,8 +420,10 @@ actor APIClient {
             // can't log this, so it only exists here.
             AppLog.shared.error("api transport failed",
                 ["method": method, "path": path, "trace_id": traceId,
+                 "base_url": Config.baseURLDisplay,
                  "error": String(describing: error)])
-            throw APIError(detail: error.localizedDescription, traceId: traceId)
+            let hint = " (\(Config.baseURLDisplay))"
+            throw APIError(detail: error.localizedDescription + hint, traceId: traceId)
         }
 
         let tid = Self.traceId(resp) ?? traceId
