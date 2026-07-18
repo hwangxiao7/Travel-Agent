@@ -12,7 +12,7 @@ from dataclasses import dataclass
 import httpx
 
 from app.services.geo import estimate_drive_hours, format_duration, haversine_miles
-from app.services.query_understanding import TravelIntent, llm_activity_phrase
+from app.services.query_understanding import TravelIntent, resolve_activity_phrase
 
 
 @dataclass
@@ -76,9 +76,9 @@ def _query_variants(phrase: str) -> list[str]:
     return sorted(out, key=len)
 
 
-async def _place_search_queries(query: str) -> list[str]:
-    """LLM → English activity phrase(s) for Nominatim. No alias tables."""
-    phrase = await llm_activity_phrase(query)
+async def _place_search_queries(query: str, intent: TravelIntent) -> list[str]:
+    """Rules-first, then LRU/LLM → English activity phrase(s) for Nominatim."""
+    phrase = await resolve_activity_phrase(query, intent)
     if phrase:
         return _query_variants(phrase)
     q = query.strip()
@@ -130,7 +130,7 @@ async def search_nearby_pois(
     limit: int = 8,
 ) -> list[PoiHit]:
     """Search real nearby places for the free-text activity (secondary path)."""
-    candidates = await _place_search_queries(query)
+    candidates = await _place_search_queries(query, intent)
     if not candidates:
         return []
 

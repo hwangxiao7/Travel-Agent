@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections import OrderedDict
 from dataclasses import asdict, dataclass, field
 
 from app.models.schemas import Preference
@@ -457,14 +458,53 @@ _PHRASE_SYSTEM_LOOSE = (
     "Return only the phrase, nothing else."
 )
 
+# In-process LRU for LLM phrase normalization (strict + loose share one store).
+_PHRASE_CACHE: OrderedDict[tuple[str, bool], str] = OrderedDict()
+_PHRASE_CACHE_MAX = 512
 
-async def english_activity_phrase(text: str, *, strict: bool = True) -> str:
-    """Open-vocab: rewrite any-language activity text into an English phrase.
 
-    Shared by POI/embedding retrieval (strict) and discovery (loose). No synonym
-    tables — the LLM handles novel activities and paraphrases. Low temperature
-    keeps this normalization deterministic. Best-effort → "" on failure.
-    """
+def _phrase_cache_key(text: str, strict: bool) -> tuple[str, bool]:
+    return (normalize_query(text).lower(), strict)
+
+
+def _phrase_cache_get(key: tuple[str, bool]) -> str | None:
+    if key not in _PHRASE_CACHE:
+        return None
+    _PHRASE_CACHE.move_to_end(key)
+    return _PHRASE_CACHE[key]
+
+
+def _phrase_cache_set(key: tuple[str, bool], value: str) -> None:
+    _PHRASE_CACHE[key] = value
+    _PHRASE_CACHE.move_to_end(key)
+    while len(_PHRASE_CACHE) > _PHRASE_CACHE_MAX:
+        _PHRASE_CACHE.popitem(last=False)
+
+
+def rules_cover_activity(intent: TravelIntent) -> bool:
+    """True when rule extraction already identified a known activity/specialty."""
+    if intent.activities:
+        return True
+    return bool(specialty_intents(intent))
+
+
+def needs_llm_activity_phrase(intent: TravelIntent) -> bool:
+    """True when open-vocab focus remains after rules — the only case for LLM."""
+    return has_focus_query(intent) and not rules_cover_activity(intent)
+
+
+def phrase_from_rules(intent: TravelIntent) -> str:
+    """Derive an English activity phrase from rule extraction (0 LLM tokens)."""
+    if intent.activities:
+        return intent.activities[0].replace("-", " ")
+    specs = specialty_intents(intent)
+    if specs:
+        return specs[0].replace("-", " ")
+    return ""
+
+
+async def _llm_activity_phrase_uncached(text: str, *, strict: bool) -> str:
+    """Call the LLM to normalize activity text (no cache)."""
     from app.services.llm import generate_summary
 
     q = (text or "").strip()
@@ -481,7 +521,6 @@ async def english_activity_phrase(text: str, *, strict: bool = True) -> str:
     low = raw.lower()
     if any(x in low for x in ("sorry", "cannot", "i ", "as an", "as a")):
         return ""
-    # Strip chatty leftovers / markdown small models sometimes add.
     cleaned = re.sub(
         r"\b(please|near me|nearby|around here|in the area)\b",
         " ",
@@ -493,9 +532,51 @@ async def english_activity_phrase(text: str, *, strict: bool = True) -> str:
     return cleaned or raw
 
 
-async def llm_activity_phrase(query: str) -> str:
+async def english_activity_phrase(text: str, *, strict: bool = True) -> str:
+    """Open-vocab: rewrite any-language activity text into an English phrase.
+
+    Shared by POI/embedding retrieval (strict) and discovery (loose). LRU-cached
+    by normalized text + strict flag. Best-effort → "" on failure.
+    """
+    q = (text or "").strip()
+    if not q:
+        return ""
+    key = _phrase_cache_key(q, strict)
+    hit = _phrase_cache_get(key)
+    if hit is not None:
+        from app.observability import record_cache_hit
+
+        record_cache_hit()
+        return hit
+    from app.observability import record_cache_miss
+
+    record_cache_miss()
+    result = await _llm_activity_phrase_uncached(q, strict=strict)
+    _phrase_cache_set(key, result)
+    return result
+
+
+async def resolve_activity_phrase(
+    query: str,
+    intent: TravelIntent,
+    *,
+    strict: bool = True,
+) -> str:
+    """Resolve an English activity phrase with minimal LLM use.
+
+    When rules already cover the activity (strict mode), returns phrase_from_rules
+    with 0 tokens. Otherwise uses the LRU-backed english_activity_phrase path.
+    """
+    if strict and not needs_llm_activity_phrase(intent):
+        return phrase_from_rules(intent)
+    return await english_activity_phrase(query, strict=strict)
+
+
+async def llm_activity_phrase(query: str, intent: TravelIntent | None = None) -> str:
     """Strict activity phrase for embedding retrieval and POI search."""
-    return await english_activity_phrase(query, strict=True)
+    if intent is None:
+        intent = extract_intent(query)
+    return await resolve_activity_phrase(query, intent, strict=True)
 
 
 def rewrite_query(

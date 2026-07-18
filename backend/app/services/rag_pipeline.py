@@ -15,8 +15,8 @@ from app.services.query_understanding import (
     TravelIntent,
     extract_intent,
     has_focus_query,
-    llm_activity_phrase,
     preference_match_score,
+    resolve_activity_phrase,
     rewrite_query,
     specialty_intents,
 )
@@ -439,10 +439,8 @@ class RAGPipeline:
                 allow_flight = True
                 max_flight_hours = max(max_flight_hours, intent.max_flight_hours or 7.0)
 
-            # Open-vocab: LLM → English activity phrase, then embed (no synonym tables).
-            activity_phrase = ""
-            if _wants_focus(intent):
-                activity_phrase = await llm_activity_phrase(query)
+            # Open-vocab: English activity phrase when rules don't cover focus.
+            activity_phrase = await resolve_activity_phrase(query, intent)
 
             rewrite_profile = profile_text
             if memory_ctx is not None and getattr(memory_ctx, "rewrite_hint", ""):

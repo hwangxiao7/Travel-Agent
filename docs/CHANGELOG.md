@@ -3,6 +3,17 @@
 记录每次实质性更新:用了什么技术、做了哪些改进、影响范围。最新的放最上面。
 （规范见 `.cursor/rules/document-and-commit-updates.mdc`）
 
+## 2026-07-18 — Query 理解省 token：短语 LRU 缓存 + LLM 闸门收紧
+
+- 技术/方案:
+  - **A 缓存**:在 `english_activity_phrase` 内加进程内 LRU（`OrderedDict`，512 条），key 为 `(normalize_query(text).lower(), strict)`；命中/未命中复用 `record_cache_hit/miss`；空结果也缓存,避免重复失败调用。
+  - **B 闸门**:新增 `rules_cover_activity` / `needs_llm_activity_phrase` / `phrase_from_rules`；仅当「有开放词 focus 且规则未识别已知活动/specialty」时才走 LLM。统一入口 `resolve_activity_phrase(query, intent)`。
+  - `_wants_focus` 语义不变,仍用于 RAG fusion 权重与 semantic focus 过滤。
+- 改进:
+  - 省 token:「徒步 3 小时」「想看鲸鱼」等规则已覆盖的 query 不再调 LLM;重复/热门开放词 query 走 LRU 0 token。
+  - 规则已识别活动时,embed/Nominatim 直接用 `phrase_from_rules`(如 `hiking`),比原先仅在 `_wants_focus` 时才调 LLM 更稳。
+- 影响范围:`backend/app/services/query_understanding.py`、`rag_pipeline.py`、`poi_search.py`。`discovery._english_query` 经 `english_activity_phrase(strict=False)` 自动获得 A 缓存, B 不适用。
+
 ## 2026-07-18 — 种草入口：模式切换下共用醒目横幅
 
 - 技术/方案:iOS / Web 将种草入口从「今天干嘛」模块内上移到 **模式切换器下方**，两个模块（Surprise / Trip planner）共用同一条渐变贴纸横幅；Web `InspirationUpload` 新增 `variant="banner"`（硬阴影 + 大图标 + 标题副标题）；Account 内仍保留 block 形态完整上传。
