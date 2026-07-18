@@ -322,6 +322,24 @@ class InspirationScreenshotResponse(BaseModel):
     capture: InspirationCaptureOut
 
 
+class InspirationCrowdPickOut(BaseModel):
+    item_key: str
+    name: str
+    kind: str = "place"
+    affinity: float = 0.0
+    n_users: int = 0
+    lat: float = 0.0
+    lng: float = 0.0
+    verified: bool = False
+    blurb: str = ""
+
+
+class InspirationCrowdPicksResponse(BaseModel):
+    picks: list[InspirationCrowdPickOut] = Field(default_factory=list)
+    k_anonymity: int = 3
+    note: str = ""
+
+
 class ExperienceFeedbackRequest(BaseModel):
     name: str
     verdict: str  # like | dislike | crowded | again

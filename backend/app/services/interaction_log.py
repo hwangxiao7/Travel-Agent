@@ -26,6 +26,15 @@ def intent_for_plan(preferences, trip_type: str = "") -> str:
     return f"plan:{tag}:{','.join(prefs) or 'any'}"
 
 
+def intent_for_inspiration(tags: list[str] | None, activity_title: str = "") -> str:
+    """Coarse intent for screenshot inspiration funnel events."""
+    from app.db import place_key
+
+    title = place_key(activity_title)[:40] if activity_title else "any"
+    tag_csv = ",".join(sorted({str(t).strip().lower() for t in (tags or []) if str(t).strip()})[:4])
+    return f"insp:{title}:{tag_csv or 'any'}"[:120]
+
+
 # --- persona snapshot -------------------------------------------------------
 
 def _snapshot(persona) -> str:

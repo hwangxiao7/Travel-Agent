@@ -131,7 +131,7 @@ class InteractionEvent(Base):
     intent_key: Mapped[str] = mapped_column(String(120), default="", index=True)
     item_key: Mapped[str] = mapped_column(String(220), default="", index=True)  # normalized
     item_name: Mapped[str] = mapped_column(String(200), default="")
-    item_kind: Mapped[str] = mapped_column(String(16), default="")  # activity | destination | place
+    item_kind: Mapped[str] = mapped_column(String(16), default="")  # activity | destination | place | inspiration
     outcome_value: Mapped[float] = mapped_column(Float, default=0.0)  # rating for RATED, else 0/1
     # Persona at event time: "s0,s1,s2,s3,s4,s5;conf" (6 axis scores + confidence).
     persona_snapshot: Mapped[str] = mapped_column(String(80), default="")
@@ -200,11 +200,11 @@ class TrendingSpot(Base):
 
 
 class UserInspirationCapture(Base):
-    """Private screenshot inspiration — per user only, never shared catalog.
+    """Private screenshot inspiration — Layer A per user.
 
-    Structured planning facts from a user-uploaded screenshot. The image bytes
-    are processed in memory and discarded; only neutral summaries + constraints
-    are stored for that user's Taste RAG / planner context.
+    Structured planning facts from a user-uploaded screenshot. Image bytes are
+    discarded after processing. Layer B/C signals are emitted separately via
+    inspiration_signals (honors crowd_opt_out).
     """
 
     __tablename__ = "user_inspiration_captures"
@@ -221,6 +221,64 @@ class UserInspirationCapture(Base):
     tags_json: Mapped[str] = mapped_column(Text, default="[]")
     extraction_json: Mapped[str] = mapped_column(Text, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class InspirationPlaceNomination(Base):
+    """Per-user nomination linked to a canonical place (Layer B).
+
+    One row per user × canonical place — OCR variants merge to the same
+    `canonical_key` on the aggregate row.
+    """
+
+    __tablename__ = "inspiration_place_nominations"
+    __table_args__ = (
+        UniqueConstraint("user_id", "canonical_key", name="uq_insp_nom_user_canon"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    canonical_key: Mapped[str] = mapped_column(String(220), index=True)
+    dest_key: Mapped[str] = mapped_column(String(220), index=True)
+    dest_name: Mapped[str] = mapped_column(String(200), default="")
+    place_key: Mapped[str] = mapped_column(String(220), index=True)
+    place_name: Mapped[str] = mapped_column(String(200), default="")
+    lat: Mapped[float] = mapped_column(Float, default=0.0)
+    lng: Mapped[float] = mapped_column(Float, default=0.0)
+    geo_cell: Mapped[str] = mapped_column(String(32), default="", index=True)
+    activity_key: Mapped[str] = mapped_column(String(220), default="")
+    tags_csv: Mapped[str] = mapped_column(String(240), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class InspirationPlaceNominationAgg(Base):
+    """One row per real-world place (canonical merge target).
+
+    Multiple screenshots / name variants → same `canonical_key`. `n_users` =
+    distinct nominators; `n_mentions` = total sighting count.
+    """
+
+    __tablename__ = "inspiration_place_nomination_agg"
+    __table_args__ = (
+        UniqueConstraint("canonical_key", name="uq_insp_nom_agg_canon"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    canonical_key: Mapped[str] = mapped_column(String(220), unique=True, index=True)
+    dest_key: Mapped[str] = mapped_column(String(220), index=True)
+    dest_name: Mapped[str] = mapped_column(String(200), default="")
+    place_key: Mapped[str] = mapped_column(String(220), index=True)
+    place_name: Mapped[str] = mapped_column(String(200), default="")
+    aliases_json: Mapped[str] = mapped_column(Text, default="[]")
+    lat: Mapped[float] = mapped_column(Float, default=0.0)
+    lng: Mapped[float] = mapped_column(Float, default=0.0)
+    geo_cell: Mapped[str] = mapped_column(String(32), default="", index=True)
+    n_users: Mapped[int] = mapped_column(Integer, default=0)
+    n_mentions: Mapped[int] = mapped_column(Integer, default=0)
+    tags_csv: Mapped[str] = mapped_column(String(240), default="")
+    activity_keys_csv: Mapped[str] = mapped_column(String(400), default="")
+    blurb: Mapped[str] = mapped_column(String(280), default="")
+    promoted: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class TasteSnippet(Base):
@@ -328,6 +386,29 @@ def get_engine():
     return _engine
 
 
+def _migrate_inspiration_place_tables(engine) -> None:
+    """Drop pre-canonical inspiration tables so create_all can rebuild schema.
+
+    Dev-only safety net: older builds keyed agg rows by (dest_key, place_key).
+    Canonical merge uses `canonical_key`; ALTER + backfill is not worth the
+    complexity for ephemeral crowd signal data."""
+    if not str(engine.url).startswith("sqlite"):
+        return
+    from sqlalchemy import text
+
+    with engine.begin() as conn:
+        rows = conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name='inspiration_place_nomination_agg'")
+        ).fetchall()
+        if not rows:
+            return
+        cols = {row[1] for row in conn.execute(text("PRAGMA table_info(inspiration_place_nomination_agg)"))}
+        if "canonical_key" in cols:
+            return
+        conn.execute(text("DROP TABLE IF EXISTS inspiration_place_nominations"))
+        conn.execute(text("DROP TABLE IF EXISTS inspiration_place_nomination_agg"))
+
+
 def _ensure_sqlite_columns(engine) -> None:
     """Lightweight dev migration: add newly-introduced columns to existing tables.
 
@@ -368,6 +449,7 @@ def _ensure_sqlite_columns(engine) -> None:
 
 def init_db() -> None:
     engine = get_engine()
+    _migrate_inspiration_place_tables(engine)
     Base.metadata.create_all(bind=engine)
     _ensure_sqlite_columns(engine)
     # Index sticker files into media_assets (no-op if folder empty / missing).

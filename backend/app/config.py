@@ -15,6 +15,16 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_base_url: str = ""  # OpenAI-compatible gateway; blank = api.openai.com
     openai_model: str = "gpt-4o-mini"
+    # Vision-only model for screenshot inspiration (blank → openai_model).
+    # Used only when INSPIRATION_EXTRACT_MODE=vision or auto OCR fallback.
+    openai_vision_model: str = ""
+    # Screenshot inspiration extraction: ocr_text | vision | auto
+    # ocr_text = local OCR + text LLM (cheap); vision = image→VL model; auto = OCR first.
+    inspiration_extract_mode: str = "auto"
+    inspiration_nomination_k: int = 3
+    inspiration_geo_cell_deg: float = 0.5
+    # Merge nominations into one canonical place when within this radius (miles).
+    inspiration_merge_radius_miles: float = 0.35
     openai_embed_model: str = "text-embedding-3-small"  # RAG semantic retrieval
     # RAG embedding backend: "api" (OpenAI-compatible / Ollama) or "local" (PyTorch).
     embedding_backend: str = "api"

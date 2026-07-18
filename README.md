@@ -31,7 +31,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ### Docker（后端 → 日后 EC2）
 
-只打包 API；密钥用 `.env` 注入，SQLite 用 volume 持久化。
+只打包 API；密钥用 `.env` 注入，SQLite 用 volume 持久化。镜像内已装 **RapidOCR + ONNX**（种草截图本地 OCR）及所需系统库。
 
 ```bash
 # 仓库根目录
@@ -42,6 +42,8 @@ docker run -d --name travel-agent -p 8000:8000 \
   travel-agent-api
 # 探活: curl http://127.0.0.1:8000/api/health
 ```
+
+`.env` 至少配置 `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_MODEL`（OCR 后的文本结构化）；可选 `INSPIRATION_EXTRACT_MODE=auto`、`OPENAI_VISION_MODEL`（OCR 失败兜底）。详见 `.env.example`。
 
 EC2 上同命令即可（安全组放行 8000 或前面加 Nginx/ALB）。生产务必改掉默认 `JWT_SECRET`，并设置 `CORS_ORIGINS`。
 

@@ -1,12 +1,8 @@
-"""User-submitted screenshot inspiration — private Taste RAG path.
+"""User-submitted screenshot inspiration — private Taste RAG + optional crowd path.
 
-Compliance boundary (no scraping, no shared catalog by default):
-- The user voluntarily uploads their own screenshot.
-- We process the image in memory and discard it — only structured facts +
-  taste snippets are persisted, scoped to that user.
-- We never write to TrendingSpot / shared corpus from this path.
-- Extracted text is rewritten into neutral planning facts (our words), not a
-  stored copy of the post caption.
+Layer A (always): private capture + taste snippets for this user only.
+Layer B (opt-in): InteractionEvent + nomination aggregates (k-anonymous).
+Layer C (gated): TrendingSpot promote after ≥K users + geocoded coords.
 """
 
 from __future__ import annotations
@@ -17,10 +13,13 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.db import User, UserInspirationCapture
 from app.models.schemas import InspirationCaptureOut, InspirationPlaceOut
 from app.services.geocode import geocode as geocode_query
-from app.services.llm import analyze_image_json
+from app.services.inspiration_signals import publish_inspiration_signals
+from app.services.llm import analyze_image_json, generate_summary
+from app.services.screenshot_ocr import extract_text_from_screenshot
 from app.services.taste_profile import invalidate, record_snippet
 
 _MAX_BYTES = 4 * 1024 * 1024
@@ -44,6 +43,29 @@ _EXTRACT_SYSTEM = (
     "- Max 6 places, 8 must_bring, 8 must_do_tips, 6 tags."
 )
 
+_EXTRACT_FROM_TEXT_SYSTEM = (
+    "You read OCR text extracted from a travel inspiration screenshot "
+    "(social post, notes, itinerary). Extract planning facts in YOUR OWN WORDS — "
+    "do not copy long captions verbatim.\n"
+    "Return ONLY JSON with this shape:\n"
+    '{"activity_title":"short name","summary":"one neutral sentence",'
+    '"places":[{"name_en":"English/geocodable name","name_local":"original if any"}],'
+    '"suggested_times":["e.g. weekday 7am, sunset"],'
+    '"duration_hint":"e.g. 2-3 hours or empty",'
+    '"must_bring":["items the post says to pack/bring"],'
+    '"must_do_tips":["strong tips: must book, arrive before X, permit required, '
+    'avoid weekends, cash only, etc."],'
+    '"tags":["open-vocab lowercase activity/vibe tags"]}\n'
+    "Rules:\n"
+    "- Input may be noisy OCR — infer the travel intent, ignore UI chrome and emoji rows.\n"
+    "- must_bring / must_do_tips: only explicit strong recommendations from the text.\n"
+    "- If a field is unknown, use [] or \"\".\n"
+    "- Max 6 places, 8 must_bring, 8 must_do_tips, 6 tags."
+)
+
+_MIN_OCR_CHARS = 40
+_MAX_OCR_CHARS = 6000
+
 
 @dataclass
 class Extraction:
@@ -60,7 +82,19 @@ class Extraction:
 def _clip_list(items, limit: int) -> list[str]:
     out: list[str] = []
     for raw in items or []:
-        s = str(raw).strip()
+        if isinstance(raw, dict):
+            s = str(
+                raw.get("item")
+                or raw.get("tip")
+                or raw.get("tag")
+                or raw.get("name")
+                or raw.get("text")
+                or ""
+            ).strip()
+            if not s and raw:
+                s = str(next(iter(raw.values()), "")).strip()
+        else:
+            s = str(raw).strip()
         if s and s not in out:
             out.append(s[:120])
         if len(out) >= limit:
@@ -161,6 +195,70 @@ def _taste_snippet_text(ext: Extraction, places: list[InspirationPlaceOut]) -> s
     return " ".join(bits)[:400]
 
 
+def _local_json_mode() -> bool:
+    return "localhost" not in (settings.openai_base_url or "")
+
+
+async def _extract_from_ocr_text(ocr_text: str, *, language: str) -> str:
+    lang_note = "Respond with JSON only. Keep name_en geocodable; name_local may stay Chinese."
+    if language.lower().startswith("zh"):
+        lang_note += " summary may be Chinese."
+    clipped = ocr_text.strip()[:_MAX_OCR_CHARS]
+    prompt = f"OCR text from a travel inspiration screenshot:\n\n{clipped}\n\n{lang_note}"
+    return await generate_summary(
+        prompt=prompt,
+        system=_EXTRACT_FROM_TEXT_SYSTEM,
+        json_mode=_local_json_mode(),
+        temperature=0.2,
+    )
+
+
+async def _extract_from_vision(
+    *,
+    image_bytes: bytes,
+    mime: str,
+    language: str,
+) -> str:
+    b64 = base64.standard_b64encode(image_bytes).decode("ascii")
+    lang_note = "Respond with JSON only. Keep name_en geocodable; name_local may stay Chinese."
+    if language.lower().startswith("zh"):
+        lang_note += " summary may be Chinese."
+    return await analyze_image_json(
+        image_b64=b64,
+        mime=mime,
+        prompt=lang_note,
+        system=_EXTRACT_SYSTEM,
+        json_mode=_local_json_mode(),
+    )
+
+
+async def _run_extraction(
+    *,
+    image_bytes: bytes,
+    mime: str,
+    language: str,
+) -> Extraction:
+    mode = (settings.inspiration_extract_mode or "auto").strip().lower()
+    if mode not in {"ocr_text", "vision", "auto"}:
+        mode = "auto"
+
+    if mode in {"ocr_text", "auto"}:
+        ocr_text = extract_text_from_screenshot(image_bytes)
+        if len(ocr_text.strip()) >= _MIN_OCR_CHARS:
+            raw = await _extract_from_ocr_text(ocr_text, language=language)
+            ext = _parse_extraction(raw)
+            if ext is not None:
+                return ext
+        if mode == "ocr_text":
+            raise ValueError("Could not read text from this screenshot (try vision mode or a clearer image)")
+
+    raw = await _extract_from_vision(image_bytes=image_bytes, mime=mime, language=language)
+    ext = _parse_extraction(raw)
+    if ext is None:
+        raise ValueError("Could not read activity details from this screenshot")
+    return ext
+
+
 def capture_out(row: UserInspirationCapture) -> InspirationCaptureOut:
     def _loads(raw: str) -> list:
         try:
@@ -212,21 +310,7 @@ async def process_screenshot(
     if len(image_bytes) > _MAX_BYTES:
         raise ValueError("Image too large (max 4 MB)")
 
-    b64 = base64.standard_b64encode(image_bytes).decode("ascii")
-    lang_note = "Respond with JSON only. Keep name_en geocodable; name_local may stay Chinese."
-    if language.lower().startswith("zh"):
-        lang_note += " summary may be Chinese."
-
-    raw = await analyze_image_json(
-        image_b64=b64,
-        mime=mime,
-        prompt=lang_note,
-        system=_EXTRACT_SYSTEM,
-        json_mode=True,
-    )
-    ext = _parse_extraction(raw)
-    if ext is None:
-        raise ValueError("Could not read activity details from this screenshot")
+    ext = await _run_extraction(image_bytes=image_bytes, mime=mime, language=language)
 
     places = await _resolve_places(ext.places, origin_lat=origin_lat, origin_lng=origin_lng)
     places_json = [
@@ -271,6 +355,14 @@ async def process_screenshot(
         source=f"shot:{row.id}",
         weight=1.4,
         polarity=1.0,
+    )
+    publish_inspiration_signals(
+        db,
+        user,
+        ext,
+        places,
+        origin_lat=origin_lat,
+        origin_lng=origin_lng,
     )
     db.commit()
     invalidate(user.id)

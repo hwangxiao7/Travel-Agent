@@ -228,12 +228,14 @@ async def analyze_image_json(
             from openai import AsyncOpenAI
 
             try:
+                vision_model = (settings.openai_vision_model or settings.openai_model).strip()
                 client_kwargs = {"api_key": settings.openai_api_key}
                 if settings.openai_base_url:
                     client_kwargs["base_url"] = settings.openai_base_url
                 client = AsyncOpenAI(**client_kwargs)
                 extra = {}
-                if json_mode:
+                local_gateway = "localhost" in (settings.openai_base_url or "")
+                if json_mode and not local_gateway:
                     extra["response_format"] = {"type": "json_object"}
                 user_content: list[dict] = [
                     {"type": "text", "text": prompt},
@@ -247,7 +249,7 @@ async def analyze_image_json(
                     messages.append({"role": "system", "content": system})
                 messages.append({"role": "user", "content": user_content})
                 resp = await client.chat.completions.create(
-                    model=settings.openai_model,
+                    model=vision_model,
                     max_tokens=900,
                     temperature=temperature,
                     messages=messages,

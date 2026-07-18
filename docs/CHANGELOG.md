@@ -3,6 +3,36 @@
 记录每次实质性更新:用了什么技术、做了哪些改进、影响范围。最新的放最上面。
 （规范见 `.cursor/rules/document-and-commit-updates.mdc`）
 
+## 2026-07-18 — 种草 Layer B：同一地点 canonical merge（减重复 aggregate）
+
+- 技术/方案:新增 `inspiration_place_merge.py` + `inspiration_geo.py`——OCR 变体（`KilaueaIkiOverlook` / `Kilauea Iki Overlook`）按 `canonical_key`（geo @3 位小数或 name slug）+ 半径 `INSPIRATION_MERGE_RADIUS_MILES`（默认 0.35 mi）+ 名称 token 重叠合并为 **一行** `InspirationPlaceNominationAgg`；用户提名唯一键改为 `(user_id, canonical_key)`；`aliases_json` / `n_mentions` 记录变体与总提及。`init_db` 对旧 SQLite `(dest_key, place_key)` 表自动 drop 重建。
+- 改进:多用户多截图讲同一活动/地址时不再每条 OCR 名字占一条 aggregate，降低 Layer B DB 与 rollup 压力；`publish_inspiration_signals` 返回 `merged_into_existing`。
+- 影响范围:`backend/app/services/{inspiration_place_merge,inspiration_geo,inspiration_signals}.py`、`backend/app/db.py`、`backend/app/config.py`、`docs/架构技术选型.md` §13.4、`docs/CHANGELOG.md`。
+
+## 2026-07-18 — 种草 Layer B/C：k-匿名共享 + 核实后入 catalog
+
+- 技术/方案:新增 `inspiration_signals.py`——截图保存后（未 `crowd_opt_out`）写 `InteractionEvent`（persona×activity/place）+ `inspiration_place_nominations` / `_agg`；`n_users≥INSPIRATION_NOMINATION_K` 且有地编坐标 → `upsert_spots(platform=user_nomination)`。API `GET /api/inspiration/crowd-picks` 返回 k-匿名 persona/geo  picks；privacy-note 说明三层边界。
+- 改进:从文字理解「用户想做什么 + 类似的事」→ 私有 Taste；相似人格/地理用户可见聚合地点；核实后 catalog 减幻觉；不存原文/截图，Layer C 仅事实。动机:用户要共享推荐又避版权。
+- 影响范围:`backend/app/services/{inspiration_signals,inspiration_screenshot}.py`、`backend/app/services/interaction_log.py`、`backend/app/db.py`（提名表）、`backend/app/routers/inspiration.py`、`backend/app/models/schemas.py`、`backend/app/config.py`、`.env.example`、`docs/架构技术选型.md` §13、`docs/CHANGELOG.md`。
+
+## 2026-07-18 — Agent skill：Dockerfile 依赖审计
+
+- 技术/方案:新增 `.cursor/skills/dockerfile-deps-audit/`——后端改 pip/原生库/runtime env/慢冷启动时走 checklist（requirements ↔ apt ↔ ENV ↔ HEALTHCHECK ↔ .env.example）；附 `package-apt-map.md`。
+- 改进:Agent 在 Docker/EC2/容器部署/「写进 Dockerfile」场景自动意识到要同步镜像；减少 slim 容器缺 `.so` 的线上 import 失败。
+- 影响范围:`.cursor/skills/dockerfile-deps-audit/{SKILL.md,package-apt-map.md}`、`docs/CHANGELOG.md`。
+
+## 2026-07-18 — 种草截图：本地 OCR + 文本 LLM（省 vision token）
+
+- 技术/方案:新增 `screenshot_ocr.py`（RapidOCR ONNX 本地提字）+ `INSPIRATION_EXTRACT_MODE`（`ocr_text` / `vision` / `auto` 默认）。`auto` 先 OCR→文本 LLM 结构化 JSON，失败再 fallback Vision LLM；`OPENAI_VISION_MODEL` 仅兜底时使用。依赖 `rapidocr-onnxruntime` + Pillow。
+- 改进:小红书类截图不再默认整图送 VL 模型（一张图 ≈ 数千 vision token）；本地 Ollama `qwen2.5:3b` 即可做结构化，中文 OCR 由 RapidOCR 承担。动机:用户反馈慢、贵、本地 `qwen2.5:3b` 无视觉能力。
+- 影响范围:`backend/app/services/{screenshot_ocr,inspiration_screenshot}.py`、`backend/app/config.py`、`backend/requirements.txt`、`.env.example`、`docs/架构技术选型.md` §13.2、`docs/CHANGELOG.md`。
+
+## 2026-07-18 — Docker 镜像：OCR 系统依赖 + 种草 env 默认值
+
+- 技术/方案:`Dockerfile` 补充 RapidOCR/onnxruntime/opencv 所需 apt 包（`libgomp1`、`libglib2.0-0`、`libgl1`）；默认 `INSPIRATION_EXTRACT_MODE=auto`；HEALTHCHECK `start-period` 45s 适配首次 OCR 模型加载；`requirements.txt` / `README` 注明 Docker 与 OCR 关系。
+- 改进:EC2/容器部署不再缺 OCR 运行时库；与本地 `pip install` 行为一致。
+- 影响范围:`Dockerfile`、`backend/requirements.txt`、`README.md`、`docs/CHANGELOG.md`。
+
 ## 2026-07-18 — Query 理解省 token：短语 LRU 缓存 + LLM 闸门收紧
 
 - 技术/方案:
