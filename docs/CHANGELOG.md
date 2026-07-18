@@ -3,6 +3,18 @@
 记录每次实质性更新:用了什么技术、做了哪些改进、影响范围。最新的放最上面。
 （规范见 `.cursor/rules/document-and-commit-updates.mdc`）
 
+## 2026-07-18 — 代码库记忆：Serena MCP + 代码地图规则（省 token）
+
+- 技术/方案:引入 [Serena](https://github.com/oraios/serena) 作为项目级 MCP(`.cursor/mcp.json`,`ide-assistant` context,经 `uvx` 拉起,已装 `uv` 到 `~/.local/bin`)。Serena 基于 LSP 提供符号级检索(`find_symbol` / `find_referencing_symbols` / `get_symbols_overview`)与**跨会话持久记忆**(`.serena/memories/`),并有 `.serena/cache/` 增量索引(按 mtime/git hash 只重解析改动文件)。项目已用 `serena project create --language python --language typescript` 生成 `.serena/project.yml` 并执行 `project index` 建符号缓存。
+- 改进:预置 4 份记忆(`project_overview` / `code_map` / `suggested_commands` / `conventions_and_workflow`),把「功能 → 文件 → 模块关系」一次性沉淀;新增 alwaysApply 规则 `.cursor/rules/codebase-map.mdc` 指示每个新会话**先读记忆/地图、用符号检索,不重扫全库**。动机:每开新 Agent 窗口不必重新 grep/读整仓来重建认知。预期收益:显著降低每次会话的检索 token 与首轮延迟,理解一致性更好。
+- 影响范围:`.cursor/mcp.json`(新增)、`.cursor/rules/codebase-map.mdc`(新增)、`.serena/project.yml`+`.serena/project.local.yml`+`.serena/memories/*.md`(新增)、`docs/CHANGELOG.md`。仅新增配置/文档,不改动业务代码或运行时行为。
+
+## 2026-07-18 — 首次开户使用说明引导（Onboarding）
+
+- 技术/方案:新增 iOS `OnboardingView.swift`——基于 SwiftUI `TabView(.page)` 的可滑动引导卡片，一个模块一个模块地介绍用法；沿用 Cute 手绘贴纸主题(`stickerCard` / `CutePillButton` / `StickerImage`)与 `L10n` 中英双语。共 6 页:欢迎 → 今天干嘛 → 出行规划 → 旅行人格 → 收藏与我的 → 开始。含进度点、跳过、上一步/下一步、贴纸浮动动画。
+- 改进:新用户开户/首次进入即弹出引导(`@AppStorage("onboarding.v1.seen")` 只自动展示一次,以 `fullScreenCover` + `interactiveDismissDisabled` 呈现);「关于」页新增“重播使用说明”按钮，翻转标记后由 `ContentView` 重新拉起。动机:降低首次上手门槛,让用户先理解各模块再操作。
+- 影响范围:`ios/TravelAgent/OnboardingView.swift`(新增)、`ios/TravelAgent/ContentView.swift`(首启触发 + onChange 重播)、`ios/TravelAgent/AccountView.swift`(About 重播入口)、`ios/TravelAgent.xcodeproj/project.pbxproj`(登记新源文件)。
+
 ## 2026-07-16 — 面试技术总结文档
 
 - 技术/方案:新增 `docs/面试技术总结.md`——前后端栈、编排型 RAG Agent 流水线、选型对比、踩坑→收益表、高频 Q&A、简历条目与演示路径；全文档索引入口（README / PROJECT_OVERVIEW / 现状 / 技术分析 / 选型）。

@@ -87,7 +87,7 @@ final class AuthStore {
             guard let url = URL(string: urlStr) else {
                 throw APIError(detail: "Invalid WeChat URL")
             }
-            UIApplication.shared.open(url)
+            await UIApplication.shared.open(url)
         }
     }
 

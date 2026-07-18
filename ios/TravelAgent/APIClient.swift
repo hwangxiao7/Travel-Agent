@@ -205,8 +205,11 @@ actor APIClient {
         comps.queryItems = [URLQueryItem(name: "return_to", value: returnTo)]
         var req = URLRequest(url: comps.url!)
         req.timeoutInterval = 30
+        let traceId = Self.newTraceId()
+        req.setValue(traceId, forHTTPHeaderField: "x-trace-id")
         let (data, resp) = try await session.data(for: req)
-        try Self.check(resp, data)
+        let tid = Self.traceId(resp) ?? traceId
+        try Self.check(resp, data, traceId: tid)
         return try Self.decoder.decode(Resp.self, from: data).authorizeUrl
     }
 
@@ -216,8 +219,8 @@ actor APIClient {
     }
 
     func postLikesBatch<T: Encodable>(_ body: T) async throws {
-        struct OK: Decodable { let ok: Bool?; let liked: Int?; let unliked: Int? }
-        let _: OK = try await request("POST", "/likes/batch", body: body)
+        // Nested types are illegal inside generic functions — reuse OKResponse.
+        let _: OKResponse = try await request("POST", "/likes/batch", body: body)
     }
 
     func updateProfile(displayName: String?, contact: String?, homeLabel: String?,

@@ -1,0 +1,31 @@
+---
+description: 每个新会话先读已有的代码库记忆/地图，用符号级检索，避免重扫全库浪费 token
+alwaysApply: true
+---
+
+# 先查记忆，别重扫代码库
+
+本仓库已有一份「浏览一次、跨会话复用」的代码库知识。**开始任何任务前**，优先复用它，
+不要一上来就 grep / 读整个目录去重新理解项目——那会浪费 token。
+
+## 取用顺序（从便宜到昂贵）
+
+1. **Serena MCP 记忆**（若 `serena` MCP 可用）：会话开始时会列出已有 memories，按需
+   `read_memory`。至少已预置：`project_overview`、`code_map`、`suggested_commands`、
+   `conventions_and_workflow`。源文件在 `.serena/memories/`。
+2. **代码地图文档**：`PROJECT_OVERVIEW.md` 与 `.serena/memories/code_map.md` 给出
+   「功能 → 文件 → 模块关系」。先据此定位到具体文件，再动手。
+3. **符号级检索**：定位到文件后，用 Serena 的 `get_symbols_overview` /
+   `find_symbol` / `find_referencing_symbols` 精确取符号，**不要整文件盲读**。
+4. 只有当上面都不足以回答时，才做范围受限的搜索（限定到具体子目录/文件）。
+
+## 维护记忆（让复用持续有效）
+
+做完实质性改动后，若功能、模块关系或入口发生变化，用 `write_memory` 更新
+`.serena/memories/code_map.md`（或相关 memory），使下一个会话仍然「读一次就够」。
+这与 `document-and-commit-updates` 规则一致：改动同时更新对应文档/记忆。
+
+## 反面做法（避免）
+
+- 新会话开场就 `grep -r` / 读遍 `backend/app` 或 `frontend/src` 重新建立认知。
+- 为找一个函数把整份大文件读进上下文，而不是用符号检索取那一段。

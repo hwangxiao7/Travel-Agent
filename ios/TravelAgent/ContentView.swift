@@ -9,6 +9,9 @@ struct ContentView: View {
     /// Mutually exclusive: only one of Surprise / Trip planner is expanded.
     @State private var openModule: HomeModule = .surprise
     @AppStorage("app.language") private var languageRaw: String = ""
+    /// First-launch usage walkthrough. Flag persists so it only auto-shows once.
+    @AppStorage("onboarding.v1.seen") private var onboardingSeen = false
+    @State private var showOnboarding = false
 
     private enum HomeModule {
         case surprise
@@ -71,7 +74,22 @@ struct ContentView: View {
         .onChange(of: languageRaw) { _, _ in
             Task { await activities.load(interests: "") }
         }
+        .onAppear { if !onboardingSeen { showOnboarding = true } }
+        .onChange(of: onboardingSeen) { _, seen in
+            // Replaying from About flips the flag; close Account so the guide is on top.
+            if !seen {
+                showAccount = false
+                showOnboarding = true
+            }
+        }
         .sheet(isPresented: $showAccount) { AccountView(auth: auth) }
+        .fullScreenCover(isPresented: $showOnboarding) {
+            OnboardingView {
+                onboardingSeen = true
+                showOnboarding = false
+            }
+            .interactiveDismissDisabled()
+        }
         .onOpenURL { url in
             guard url.scheme == "travelagent" else { return }
             let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems

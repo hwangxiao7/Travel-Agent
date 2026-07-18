@@ -332,6 +332,9 @@ struct DefaultPrefsView: View {
 }
 
 struct AboutView: View {
+    @AppStorage("onboarding.v1.seen") private var onboardingSeen = false
+    @Environment(\.dismiss) private var dismiss
+
     var body: some View {
         ZStack {
             CutePaper()
@@ -346,6 +349,16 @@ struct AboutView: View {
                     .font(Cute.rounded(11, .medium))
                     .foregroundStyle(Cute.ink.opacity(0.45))
                     .multilineTextAlignment(.center)
+
+                Button {
+                    // Flip the flag → ContentView re-presents the walkthrough.
+                    onboardingSeen = false
+                    dismiss()
+                } label: {
+                    Label(L10n.t("Replay guide", "重播使用说明"), systemImage: "book.fill")
+                }
+                .buttonStyle(CutePillButton(bg: Cute.mint, fg: Cute.ink))
+                .padding(.top, 6)
             }
             .padding(24)
             .stickerCard()

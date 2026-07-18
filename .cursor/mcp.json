@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "serena": {
+      "command": "/Users/bytedance/.local/bin/uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/oraios/serena",
+        "serena",
+        "start-mcp-server",
+        "--context",
+        "ide-assistant",
+        "--project",
+        "/Users/bytedance/travel agent/Travel-Agent",
+        "--open-web-dashboard",
+        "False"
+      ],
+      "env": {
+        "npm_config_registry": "https://registry.npmjs.org/"
+      }
+    }
+  }
+}

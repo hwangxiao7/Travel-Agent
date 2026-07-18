@@ -33,3 +33,8 @@ ios/build/
 ios/DerivedData/
 *.xcuserstate
 xcuserdata/
+
+# Serena MCP: machine-specific config + regenerable LSP symbol cache.
+# Keep .serena/project.yml and .serena/memories/ tracked (shared codebase knowledge).
+.serena/project.local.yml
+.serena/cache/

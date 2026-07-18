@@ -29,6 +29,7 @@
 		9051AAC97A6E2D224E9EBA2A /* ActivitiesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0B5120E65CCECA151BF7C4F /* ActivitiesViewModel.swift */; };
 		9375EC79C617D851CADC81B4 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18527D142EB5A8A5816B8A2D /* Models.swift */; };
 		965FBED27DF96CC99B5C5DE6 /* AccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8130AE9E9C0084F8830DD82A /* AccountView.swift */; };
+		E1F2A3B4C5D6079182930A1B /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70819203A4B5 /* OnboardingView.swift */; };
 		BE7CA7057063D23D1895F337 /* icon-hiking.png in Resources */ = {isa = PBXBuildFile; fileRef = F267CA09565786D4BB7A4881 /* icon-hiking.png */; };
 		C3C68398715436A0F764DD41 /* AssetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 150A6AD4EF3D0C635623C1AB /* AssetStore.swift */; };
 		CA1A808C13D730862F7308EB /* L10n.swift in Sources */ = {isa = PBXBuildFile; fileRef = 403852E13AA72E8E36D64AE6 /* L10n.swift */; };
@@ -64,6 +65,7 @@
 		6EE42DC0CFC138FFF85D2BE5 /* vibe-social.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "vibe-social.png"; sourceTree = "<group>"; };
 		7F9A928868E9346E2DDFD5BE /* icon-weekend.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-weekend.png"; sourceTree = "<group>"; };
 		8130AE9E9C0084F8830DD82A /* AccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountView.swift; sourceTree = "<group>"; };
+		1A2B3C4D5E6F70819203A4B5 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		8EED0EF789AFA961454E94F8 /* TravelAgentApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TravelAgentApp.swift; sourceTree = "<group>"; };
 		9856631D0EC856F1C16F6F1B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A0B5120E65CCECA151BF7C4F /* ActivitiesViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivitiesViewModel.swift; sourceTree = "<group>"; };
@@ -133,6 +135,7 @@
 				403852E13AA72E8E36D64AE6 /* L10n.swift */,
 				D34A8DF54F2F36DF5368273D /* LikeStore.swift */,
 				18527D142EB5A8A5816B8A2D /* Models.swift */,
+				1A2B3C4D5E6F70819203A4B5 /* OnboardingView.swift */,
 				D44D910B6152A313C072AD7F /* Theme.swift */,
 				8EED0EF789AFA961454E94F8 /* TravelAgentApp.swift */,
 				F736FA023B653E595699DF08 /* TripViewModel.swift */,
@@ -246,6 +249,7 @@
 				CA1A808C13D730862F7308EB /* L10n.swift in Sources */,
 				03FE19F5C08346DE3BF6E2F0 /* LikeStore.swift in Sources */,
 				9375EC79C617D851CADC81B4 /* Models.swift in Sources */,
+				E1F2A3B4C5D6079182930A1B /* OnboardingView.swift in Sources */,
 				4079FD00C3A235A224AAA547 /* Theme.swift in Sources */,
 				D9794C1BA456806B7F90BF0D /* TravelAgentApp.swift in Sources */,
 				300B94916C3104AD839A3F1F /* TripViewModel.swift in Sources */,
