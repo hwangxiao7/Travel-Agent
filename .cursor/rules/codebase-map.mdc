@@ -10,9 +10,11 @@ alwaysApply: true
 
 ## 取用顺序（从便宜到昂贵）
 
-1. **Serena MCP 记忆**（若 `serena` MCP 可用）：会话开始时会列出已有 memories，按需
-   `read_memory`。至少已预置：`project_overview`、`code_map`、`suggested_commands`、
-   `conventions_and_workflow`。源文件在 `.serena/memories/`。
+1. **Serena MCP 记忆**（优先）：`serena` 已在 `~/.cursor/mcp.json` 注册（工作区根为
+   上级 `travel agent` 时，仅靠子目录 `.cursor/mcp.json` 可能不会被 Cursor 加载）。
+   会话开始用 `list_memories` / `read_memory`；至少已预置：`project_overview`、
+   `code_map`、`suggested_commands`、`conventions_and_workflow`。源文件在
+   `.serena/memories/`——若 MCP 暂不可用，直接读这些 md 作为降级。
 2. **代码地图文档**：`PROJECT_OVERVIEW.md` 与 `.serena/memories/code_map.md` 给出
    「功能 → 文件 → 模块关系」。先据此定位到具体文件，再动手。
 3. **符号级检索**：定位到文件后，用 Serena 的 `get_symbols_overview` /

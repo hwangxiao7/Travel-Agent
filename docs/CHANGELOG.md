@@ -3,6 +3,24 @@
 记录每次实质性更新:用了什么技术、做了哪些改进、影响范围。最新的放最上面。
 （规范见 `.cursor/rules/document-and-commit-updates.mdc`）
 
+## 2026-07-19 — 文档：面试资料（一站式）
+
+- 技术/方案:新增 `docs/面试资料.md`——合并技术栈、系统架构、AI Agent 专题、LLM 专题（provider/system-user/token/LRU/OCR）、个性化、工程亮点、降级、Q&A、简历、演示路径、代码索引与演进路线。
+- 改进:`面试技术总结.md`、`AI-Agent与LLM专题.md` 改为指向 `面试资料.md`；README / PROJECT_OVERVIEW / 项目现状 / 技术分析 / 选型 更新索引。
+- 影响范围:`docs/面试资料.md`（新增）及上述文档、`docs/CHANGELOG.md`。
+
+## 2026-07-19 — 文档：AI Agent 与 LLM 专题（面试主读）
+
+- 技术/方案:新增 `docs/AI-Agent与LLM专题.md`——集中写清 Orchestrated Pipeline Agent 形态、Planner/RAG 双路径、Grounded 生成与校验、LLM 统一入口（provider/system-user 拆分/token 计量/闸门+LRU）、Embedding 降级、个性化注入、降级矩阵、可观测、Token 成本量级、代码索引与 Q&A。
+- 改进:面试可单读该文档覆盖 Agent/LLM 追问；`面试技术总结`、`项目技术分析`、`项目现状`、`架构技术选型`、README 增加交叉链接。
+- 影响范围:`docs/AI-Agent与LLM专题.md`（新增）及上述文档索引、`docs/CHANGELOG.md`。
+
+## 2026-07-19 — Serena MCP 挂到全局 Cursor 配置
+
+- 技术/方案:将 `serena` 写入 `~/.cursor/mcp.json`（与 lark/prd2case 并列），固定 `--project` 指向本仓库；`--context` 从已弃用的 `ide-assistant` 改为 `claude-code`；`startup_timeout_sec` 120s。项目内 `.cursor/mcp.json` 同步更新。
+- 改进:工作区根为上级 `travel agent` 时，子目录 MCP 配置不会被 Cursor 加载，导致 Agent 每会话重扫代码库。动机:让 Serena 符号检索与跨会话记忆稳定可用。预期收益:新 Agent 窗口 token 显著下降。
+- 影响范围:`~/.cursor/mcp.json`、`Travel-Agent/.cursor/mcp.json`、`.cursor/rules/codebase-map.mdc`、`docs/CHANGELOG.md`。
+
 ## 2026-07-18 — 种草 Layer B：同一地点 canonical merge（减重复 aggregate）
 
 - 技术/方案:新增 `inspiration_place_merge.py` + `inspiration_geo.py`——OCR 变体（`KilaueaIkiOverlook` / `Kilauea Iki Overlook`）按 `canonical_key`（geo @3 位小数或 name slug）+ 半径 `INSPIRATION_MERGE_RADIUS_MILES`（默认 0.35 mi）+ 名称 token 重叠合并为 **一行** `InspirationPlaceNominationAgg`；用户提名唯一键改为 `(user_id, canonical_key)`；`aliases_json` / `n_mentions` 记录变体与总提及。`init_db` 对旧 SQLite `(dest_key, place_key)` 表自动 drop 重建。

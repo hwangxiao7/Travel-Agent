@@ -2,7 +2,7 @@
 
 北美「说走就走」旅行规划：**FastAPI 后端 + iOS（主产品）+ Web（对齐 iOS 的 Beta）**。
 
-**文档：** [面试技术总结](./docs/面试技术总结.md) · [项目现状与 AI Agent 工程实践](./docs/项目现状与AI-Agent工程实践.md) · [完整技术分析](./docs/项目技术分析.md) · [PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md) · [架构技术选型](./docs/架构技术选型.md)
+**文档：** [面试资料](./docs/面试资料.md) · [项目现状与 AI Agent 工程实践](./docs/项目现状与AI-Agent工程实践.md) · [完整技术分析](./docs/项目技术分析.md) · [PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md) · [架构技术选型](./docs/架构技术选型.md)
 
 ## Stack
 
@@ -46,6 +46,18 @@ docker run -d --name travel-agent -p 8000:8000 \
 `.env` 至少配置 `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_MODEL`（OCR 后的文本结构化）；可选 `INSPIRATION_EXTRACT_MODE=auto`、`OPENAI_VISION_MODEL`（OCR 失败兜底）。详见 `.env.example`。
 
 EC2 上同命令即可（安全组放行 8000 或前面加 Nginx/ALB）。生产务必改掉默认 `JWT_SECRET`，并设置 `CORS_ORIGINS`。
+
+### Web + API 一体部署（推荐公测前架构）
+
+Nginx 托管前端静态页，同域反代 `/api`；微信网站登录在备案域名 + HTTPS 后开 `AUTH_WECHAT_ENABLED`。
+
+```bash
+cp deploy/env.example .env   # 填 OPENAI_API_KEY、JWT_SECRET
+./deploy/scripts/up.sh
+open http://127.0.0.1:8080
+```
+
+详见 [deploy/README.md](./deploy/README.md)（含域名/SSL/微信配置待办清单）。
 
 ### Web
 
